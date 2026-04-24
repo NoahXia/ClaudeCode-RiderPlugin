@@ -136,7 +136,7 @@ class ClaudeMessageRouter(
             })
             "get_context_usage"       -> sendResponse(requestId, buildJsonObject { put("type", "get_context_usage_response") })
             "check_git_status"        -> handleCheckGitStatus(requestId, req)
-            "list_files_request"      -> sendResponse(requestId, buildJsonObject { put("type", "list_files_response"); put("files", JsonArray(emptyList())) })
+            "list_files_request"      -> handleListFiles(requestId, req)
             "generate_session_title"  -> sendResponse(requestId, buildJsonObject { put("type", "generate_session_title_response"); put("title", JsonNull) })
             "list_remote_sessions"    -> sendResponse(requestId, buildJsonObject { put("type", "list_remote_sessions_response"); put("sessions", JsonArray(emptyList())) })
             "open_folder"             -> sendResponse(requestId, buildJsonObject { put("type", "open_folder_response") })
@@ -473,6 +473,55 @@ class ClaudeMessageRouter(
         }
         sendResponse(requestId, buildJsonObject { put("type", "show_notification_response") })
     }
+
+    private fun handleListFiles(requestId: String, req: JsonObject) {
+        val pattern = req["pattern"]?.jsonPrimitive?.contentOrNull ?: ""
+        val cwd = project.basePath ?: System.getProperty("user.home")
+        val root = Paths.get(cwd)
+
+        val ignored = setOf(
+            ".git", ".idea", "build", "out", "node_modules", ".gradle",
+            ".intellijPlatform", "__pycache__", ".DS_Store", "dist", "target"
+        )
+
+        val results = mutableListOf<JsonElement>()
+        try {
+            Files.walk(root, 8)
+                .filter { path ->
+                    // Skip ignored directories at any level
+                    path.none { part -> part.fileName?.toString() in ignored }
+                }
+                .filter { path ->
+                    if (pattern.isBlank()) true
+                    else {
+                        val rel = root.relativize(path).toString().replace('\\', '/')
+                        val name = path.fileName?.toString() ?: ""
+                        name.contains(pattern, ignoreCase = true) ||
+                        rel.contains(pattern, ignoreCase = true)
+                    }
+                }
+                .filter { it != root }
+                .sorted()
+                .limit(100)
+                .forEach { path ->
+                    val rel = root.relativize(path).toString().replace('\\', '/')
+                    val type = if (Files.isDirectory(path)) "directory" else "file"
+                    results += buildJsonObject {
+                        put("path", rel)
+                        put("type", type)
+                    }
+                }
+        } catch (e: Exception) {
+            log.warn("list_files_request failed: ${e.message}")
+        }
+
+        sendResponse(requestId, buildJsonObject {
+            put("type", "list_files_response")
+            put("files", JsonArray(results))
+        })
+    }
+
+    // u2500u2500 settings u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
 
     private fun handleSetPermissionMode(requestId: String, req: JsonObject) {
         val mode = req["permissionMode"]?.jsonPrimitive?.contentOrNull ?: return
