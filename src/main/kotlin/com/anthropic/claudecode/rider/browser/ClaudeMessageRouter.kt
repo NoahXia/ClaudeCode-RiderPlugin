@@ -505,9 +505,11 @@ class ClaudeMessageRouter(
                 .limit(100)
                 .forEach { path ->
                     val rel = root.relativize(path).toString().replace('\\', '/')
+                    val name = path.fileName?.toString() ?: rel
                     val type = if (Files.isDirectory(path)) "directory" else "file"
                     results += buildJsonObject {
                         put("path", rel)
+                        put("name", name)
                         put("type", type)
                     }
                 }
