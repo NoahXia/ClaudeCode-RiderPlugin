@@ -333,6 +333,20 @@ object HtmlTemplateProvider {
     </script>
 
     <script src="$jsUrl"></script>
+    <script>
+    (function () {
+        // Hide "Switch account" command item — not applicable in the Rider plugin.
+        var observer = new MutationObserver(function () {
+            document.querySelectorAll('[class*="commandLabel"]').forEach(function (el) {
+                if (el.textContent.trim() === 'Switch account') {
+                    var item = el.closest('[class*="commandItem"]');
+                    if (item) item.style.display = 'none';
+                }
+            });
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+    }());
+    </script>
 </body>
 </html>
         """.trimIndent()

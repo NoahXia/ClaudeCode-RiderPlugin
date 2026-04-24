@@ -148,8 +148,8 @@ class ClaudeMessageRouter(
             "generate_session_title"  -> sendResponse(requestId, buildJsonObject { put("type", "generate_session_title_response"); put("title", JsonNull) })
             "list_remote_sessions"    -> sendResponse(requestId, buildJsonObject { put("type", "list_remote_sessions_response"); put("sessions", JsonArray(emptyList())) })
             "open_folder"             -> sendResponse(requestId, buildJsonObject { put("type", "open_folder_response") })
-            "open_config"             -> sendResponse(requestId, buildJsonObject { put("type", "open_config_response") })
-            "open_help"               -> sendResponse(requestId, buildJsonObject { put("type", "open_help_response") })
+            "open_config"             -> handleOpenConfig(requestId)
+            "open_help"               -> handleOpenHelp(requestId)
             else -> {
                 log.debug("Unhandled RPC request type: $reqType — sending stub response")
                 sendResponse(requestId, buildJsonObject { put("type", "${reqType}_response") })
@@ -463,6 +463,24 @@ class ClaudeMessageRouter(
             log.warn("Failed to open URL: $url", e)
         }
         sendResponse(requestId, buildJsonObject { put("type", "open_url_response") })
+    }
+
+    private fun handleOpenHelp(requestId: String) {
+        try {
+            if (Desktop.isDesktopSupported())
+                Desktop.getDesktop().browse(URI("https://github.com/NoahXia/ClaudeCode-RiderPlugin"))
+        } catch (e: Exception) {
+            log.warn("Failed to open help URL", e)
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "open_help_response") })
+    }
+
+    private fun handleOpenConfig(requestId: String) {
+        ApplicationManager.getApplication().invokeLater {
+            com.intellij.openapi.options.ShowSettingsUtil.getInstance()
+                .showSettingsDialog(project, "com.anthropic.claudecode.rider.settings")
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "open_config_response") })
     }
 
     private fun handleShowNotification(requestId: String, req: JsonObject) {
