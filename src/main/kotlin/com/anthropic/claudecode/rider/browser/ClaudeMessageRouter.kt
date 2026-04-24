@@ -116,8 +116,8 @@ class ClaudeMessageRouter(
             "log_event"               -> sendResponse(requestId, buildJsonObject { put("type", "log_event_response") })
             "rename_tab"              -> handleRenameTab(requestId, req)
             "update_session_state"    -> sendResponse(requestId, buildJsonObject { put("type", "update_session_state_response") })
-            "delete_session"          -> sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
-            "rename_session"          -> sendResponse(requestId, buildJsonObject { put("type", "rename_session_response"); put("skipped", false) })
+            "delete_session"          -> handleDeleteSession(requestId, req)
+            "rename_session"          -> handleRenameSession(requestId, req)
             "fork_conversation"       -> sendResponse(requestId, buildJsonObject { put("type", "fork_conversation_response") })
             "message_rated"           -> sendResponse(requestId, buildJsonObject { put("type", "message_rated_response") })
             "set_permission_mode"     -> handleSetPermissionMode(requestId, req)
@@ -299,35 +299,44 @@ class ClaudeMessageRouter(
 
     private fun readSessionSummary(path: java.nio.file.Path): String {
         return try {
-            Files.newBufferedReader(path).use { reader ->
-                var result = "Session"
-                for (i in 0 until 10) {
-                    val line = reader.readLine() ?: break
+            var summaryTitle: String? = null
+            var firstUserContent: String? = null
+            Files.newBufferedReader(path).useLines { lines ->
+                for (line in lines) {
                     if (line.isBlank()) continue
                     val json = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
-                    val role = json["role"]?.jsonPrimitive?.contentOrNull
-                        ?: json["message"]?.jsonObject?.get("role")?.jsonPrimitive?.contentOrNull
-                    if (role == "user") {
-                        val content = json["content"]?.jsonPrimitive?.contentOrNull
-                            ?: json["message"]?.jsonObject?.get("content")?.let {
-                                when {
-                                    it is JsonPrimitive -> it.contentOrNull
-                                    it is JsonArray -> it.firstOrNull()
-                                        ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-                                    else -> null
+                    // summary records (written by rename or Claude itself) take priority
+                    if (json["type"]?.jsonPrimitive?.contentOrNull == "summary") {
+                        summaryTitle = json["summary"]?.jsonPrimitive?.contentOrNull
+                        continue
+                    }
+                    // fall back to first user message content
+                    if (firstUserContent == null) {
+                        val role = json["role"]?.jsonPrimitive?.contentOrNull
+                            ?: json["message"]?.jsonObject?.get("role")?.jsonPrimitive?.contentOrNull
+                        if (role == "user") {
+                            val content = json["content"]?.jsonPrimitive?.contentOrNull
+                                ?: json["message"]?.jsonObject?.get("content")?.let {
+                                    when {
+                                        it is JsonPrimitive -> it.contentOrNull
+                                        it is JsonArray -> it.firstOrNull()
+                                            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+                                        else -> null
+                                    }
                                 }
-                            }
-                        if (!content.isNullOrBlank()) { result = content.take(80); break }
+                            if (!content.isNullOrBlank()) firstUserContent = content.take(80)
+                        }
                     }
                 }
-                result
             }
+            summaryTitle ?: firstUserContent ?: "Session"
         } catch (e: Exception) {
             "Session"
         }
     }
 
     private fun handleGetSession(requestId: String, req: JsonObject) {
+        ClaudeIconManager.setIdle(project)
         val sessionId = req["sessionId"]?.jsonPrimitive?.contentOrNull
         if (sessionId == null) {
             sendResponse(requestId, buildJsonObject {
@@ -359,6 +368,60 @@ class ClaudeMessageRouter(
             log.warn("Failed to load session $sessionId", e)
             emptyList()
         }
+    }
+
+    // ── session delete / rename ──────────────────────────────────────────────
+
+    private fun handleDeleteSession(requestId: String, req: JsonObject) {
+        val sessionId = req["sessionId"]?.jsonPrimitive?.contentOrNull
+        if (sessionId == null) {
+            sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
+            return
+        }
+        try {
+            val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
+            val file = Files.walk(claudeDir, 2).use { stream ->
+                stream.filter { it.fileName.toString() == "$sessionId.jsonl" }.findFirst().orElse(null)
+            }
+            if (file != null) {
+                Files.delete(file)
+                log.info("Deleted session $sessionId")
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to delete session $sessionId", e)
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
+    }
+
+    private fun handleRenameSession(requestId: String, req: JsonObject) {
+        val sessionId = req["sessionId"]?.jsonPrimitive?.contentOrNull
+        val title     = req["title"]?.jsonPrimitive?.contentOrNull
+        if (sessionId == null || title == null) {
+            sendResponse(requestId, buildJsonObject { put("type", "rename_session_response"); put("skipped", true) })
+            return
+        }
+        try {
+            val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
+            val file = Files.walk(claudeDir, 2).use { stream ->
+                stream.filter { it.fileName.toString() == "$sessionId.jsonl" }.findFirst().orElse(null)
+            }
+            if (file != null) {
+                // Append a summary record so readSessionSummary picks up the new title
+                val summaryLine = buildJsonObject {
+                    put("type", "summary")
+                    put("summary", title)
+                    put("leafUuid", "")
+                }.toString()
+                Files.write(file, ("\n" + summaryLine + "\n").toByteArray(Charsets.UTF_8),
+                    java.nio.file.StandardOpenOption.APPEND)
+                log.info("Renamed session $sessionId to '$title'")
+                sendResponse(requestId, buildJsonObject { put("type", "rename_session_response"); put("skipped", false) })
+                return
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to rename session $sessionId", e)
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "rename_session_response"); put("skipped", true) })
     }
 
     // ── new conversation tab ─────────────────────────────────────────────────

@@ -3,6 +3,8 @@ package com.anthropic.claudecode.rider.process
 import com.anthropic.claudecode.rider.browser.ClaudeBrowserManager
 import com.anthropic.claudecode.rider.toolwindow.ClaudeIconManager
 import com.anthropic.claudecode.rider.toolwindow.ClaudeToolWindowPanel
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -99,10 +101,22 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
                 } catch (e: IOException) {
                     log.debug("Channel $channelId stdout ended: ${e.message}")
                 } finally {
-                    log.info("Claude channel $channelId process exited")
+                    val exitCode = try { proc.exitValue() } catch (_: IllegalThreadStateException) { -1 }
+                    log.info("Claude channel $channelId process exited (code=$exitCode)")
                     channels.remove(channelId)
                     sendCloseChannel(channelId, null)
                     ClaudeIconManager.setDone(project)
+                    if (exitCode != 0 && exitCode != 130) {
+                        ApplicationManager.getApplication().invokeLater {
+                            NotificationGroupManager.getInstance()
+                                .getNotificationGroup("Claude Code")
+                                ?.createNotification(
+                                    "Claude process exited unexpectedly (code $exitCode)",
+                                    NotificationType.WARNING
+                                )
+                                ?.notify(project)
+                        }
+                    }
                 }
             }
 

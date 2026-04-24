@@ -266,6 +266,11 @@ object HtmlTemplateProvider {
         }
         #root { height: 100%; }
 
+        /* Session list popup: prevent the inner root from clipping the Local/Web tab row */
+        [class*="root_OOQiHg"] { overflow: visible; }
+        /* Ensure the segmented tab bar has breathing room on the left */
+        [class*="segmented_OOQiHg"] { margin-left: 2px; }
+
         /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -323,6 +328,15 @@ object HtmlTemplateProvider {
 
         window.__fromExtension = function (message) {
             window.dispatchEvent(new MessageEvent('message', { data: message }));
+            // JCEF non-OSR doesn't always repaint after JS-driven DOM updates without
+            // user input. Promote the root to a compositing layer for one frame so CEF
+            // flushes whatever the React scheduler just committed.
+            requestAnimationFrame(function () {
+                document.documentElement.style.willChange = 'transform';
+                requestAnimationFrame(function () {
+                    document.documentElement.style.willChange = '';
+                });
+            });
         };
 
         window.IS_SIDEBAR = ${isSidebar};
@@ -350,11 +364,12 @@ object HtmlTemplateProvider {
                     if (item) item.style.display = 'none';
                 }
             });
-            // Hide section headers whose sections are now empty (all items hidden)
+            // Hide entire section containers (sectionDivider + sectionHeader + items)
+            // when all commandItems in that section are hidden.
+            // DOM shape: <div key=sectionName> [sectionDivider?] sectionHeader commandItem* </div>
             document.querySelectorAll('[class*="sectionHeader"]').forEach(function (header) {
                 var text = header.textContent.trim();
                 if (HIDDEN_SECTIONS.indexOf(text) === -1) return;
-                // Check all following siblings until next header or end
                 var sibling = header.nextElementSibling;
                 var hasVisible = false;
                 while (sibling && !sibling.className.includes('sectionHeader')) {
@@ -365,7 +380,13 @@ object HtmlTemplateProvider {
                     }
                     sibling = sibling.nextElementSibling;
                 }
-                header.style.display = hasVisible ? '' : 'none';
+                // Hide the parent section container (which includes sectionDivider)
+                var container = header.parentElement;
+                if (container) {
+                    container.style.display = hasVisible ? '' : 'none';
+                } else {
+                    header.style.display = hasVisible ? '' : 'none';
+                }
             });
         }
 
