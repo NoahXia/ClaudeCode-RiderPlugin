@@ -335,9 +335,9 @@ object HtmlTemplateProvider {
     <script src="$jsUrl"></script>
     <script>
     (function () {
-        var HIDDEN_ITEMS = ['Switch account'];
+        var HIDDEN_ITEMS = ['Switch account', '/remote-control'];
         var HIDDEN_ITEM_PREFIXES = ['General config'];
-        var HIDDEN_SECTIONS = ['Settings'];
+        var HIDDEN_SECTIONS = ['Settings', 'Slash Commands'];
 
         function applyHides() {
             // Hide specific command items

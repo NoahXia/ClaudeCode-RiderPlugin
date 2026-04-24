@@ -114,7 +114,7 @@ class ClaudeMessageRouter(
             "open_url"                -> handleOpenUrl(requestId, req)
             "show_notification"       -> handleShowNotification(requestId, req)
             "log_event"               -> sendResponse(requestId, buildJsonObject { put("type", "log_event_response") })
-            "rename_tab"              -> sendResponse(requestId, buildJsonObject { put("type", "rename_tab_response") })
+            "rename_tab"              -> handleRenameTab(requestId, req)
             "update_session_state"    -> sendResponse(requestId, buildJsonObject { put("type", "update_session_state_response") })
             "delete_session"          -> sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
             "rename_session"          -> sendResponse(requestId, buildJsonObject { put("type", "rename_session_response"); put("skipped", false) })
@@ -150,6 +150,7 @@ class ClaudeMessageRouter(
             "open_folder"             -> sendResponse(requestId, buildJsonObject { put("type", "open_folder_response") })
             "open_config"             -> handleOpenConfig(requestId)
             "open_help"               -> handleOpenHelp(requestId)
+            "open_output_panel"       -> handleOpenOutputPanel(requestId)
             else -> {
                 log.debug("Unhandled RPC request type: $reqType — sending stub response")
                 sendResponse(requestId, buildJsonObject { put("type", "${reqType}_response") })
@@ -235,6 +236,7 @@ class ClaudeMessageRouter(
 
     private fun loadSessionsFromDisk(): List<JsonElement> {
         val cwd = project.basePath ?: return emptyList()
+        val gitBranch = readGitBranch(cwd)
         return try {
             val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
             if (!Files.exists(claudeDir)) return emptyList()
@@ -270,7 +272,7 @@ class ClaudeMessageRouter(
                               put("lastModified", lastMod)
                               put("fileSize", size)
                               put("summary", summary)
-                              put("gitBranch", JsonNull)
+                              if (gitBranch != null) put("gitBranch", gitBranch) else put("gitBranch", JsonNull)
                               put("worktree", JsonNull)
                               put("isCurrentWorkspace", true)
                           }
@@ -279,6 +281,19 @@ class ClaudeMessageRouter(
         } catch (e: Exception) {
             log.warn("Failed to load sessions from disk", e)
             emptyList()
+        }
+    }
+
+    private fun readGitBranch(cwd: String): String? {
+        return try {
+            val proc = ProcessBuilder("git", "-C", cwd, "branch", "--show-current")
+                .redirectErrorStream(true)
+                .start()
+            val branch = proc.inputStream.bufferedReader().readLine()?.trim()
+            proc.waitFor()
+            branch?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -475,12 +490,36 @@ class ClaudeMessageRouter(
         sendResponse(requestId, buildJsonObject { put("type", "open_help_response") })
     }
 
+    private fun handleRenameTab(requestId: String, req: JsonObject) {
+        val title = req["title"]?.jsonPrimitive?.contentOrNull
+        if (!title.isNullOrBlank()) {
+            ApplicationManager.getApplication().invokeLater {
+                com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+                    .getToolWindow("Claude")
+                    ?.setTitle(title)
+            }
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "rename_tab_response") })
+    }
+
     private fun handleOpenConfig(requestId: String) {
         ApplicationManager.getApplication().invokeLater {
             com.intellij.openapi.options.ShowSettingsUtil.getInstance()
                 .showSettingsDialog(project, "com.anthropic.claudecode.rider.settings")
         }
         sendResponse(requestId, buildJsonObject { put("type", "open_config_response") })
+    }
+
+    private fun handleOpenOutputPanel(requestId: String) {
+        ApplicationManager.getApplication().invokeLater {
+            val twm = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+            // Try common tool window IDs for the IDE's log/event panel
+            for (id in listOf("Event Log", "Problems View", "Build")) {
+                val tw = twm.getToolWindow(id)
+                if (tw != null) { tw.show(); break }
+            }
+        }
+        sendResponse(requestId, buildJsonObject { put("type", "open_output_panel_response") })
     }
 
     private fun handleShowNotification(requestId: String, req: JsonObject) {
