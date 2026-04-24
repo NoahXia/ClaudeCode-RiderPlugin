@@ -335,16 +335,41 @@ object HtmlTemplateProvider {
     <script src="$jsUrl"></script>
     <script>
     (function () {
-        // Hide "Switch account" command item — not applicable in the Rider plugin.
-        var observer = new MutationObserver(function () {
+        var HIDDEN_ITEMS = ['Switch account'];
+        var HIDDEN_ITEM_PREFIXES = ['General config'];
+        var HIDDEN_SECTIONS = ['Settings'];
+
+        function applyHides() {
+            // Hide specific command items
             document.querySelectorAll('[class*="commandLabel"]').forEach(function (el) {
                 var text = el.textContent.trim();
-                if (text === 'Switch account' || text.startsWith('General config')) {
+                var hide = HIDDEN_ITEMS.indexOf(text) !== -1 ||
+                           HIDDEN_ITEM_PREFIXES.some(function (p) { return text.startsWith(p); });
+                if (hide) {
                     var item = el.closest('[class*="commandItem"]');
                     if (item) item.style.display = 'none';
                 }
             });
-        });
+            // Hide section headers whose sections are now empty (all items hidden)
+            document.querySelectorAll('[class*="sectionHeader"]').forEach(function (header) {
+                var text = header.textContent.trim();
+                if (HIDDEN_SECTIONS.indexOf(text) === -1) return;
+                // Check all following siblings until next header or end
+                var sibling = header.nextElementSibling;
+                var hasVisible = false;
+                while (sibling && !sibling.className.includes('sectionHeader')) {
+                    if (sibling.className.includes('commandItem') &&
+                        sibling.style.display !== 'none') {
+                        hasVisible = true;
+                        break;
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+                header.style.display = hasVisible ? '' : 'none';
+            });
+        }
+
+        var observer = new MutationObserver(applyHides);
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }());
     </script>
