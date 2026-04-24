@@ -339,7 +339,7 @@ object HtmlTemplateProvider {
         var observer = new MutationObserver(function () {
             document.querySelectorAll('[class*="commandLabel"]').forEach(function (el) {
                 var text = el.textContent.trim();
-                if (text === 'Switch account' || text === 'General config') {
+                if (text === 'Switch account' || text.startsWith('General config')) {
                     var item = el.closest('[class*="commandItem"]');
                     if (item) item.style.display = 'none';
                 }
