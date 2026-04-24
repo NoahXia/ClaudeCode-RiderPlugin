@@ -125,6 +125,10 @@ class ClaudeMessageRouter(
                 put("installed", JsonArray(emptyList()))
                 put("available", JsonArray(emptyList()))
             })
+            "list_marketplaces"       -> sendResponse(requestId, buildJsonObject {
+                put("type", "list_marketplaces_response")
+                put("marketplaces", JsonArray(emptyList()))
+            })
             "get_mcp_servers"         -> sendResponse(requestId, buildJsonObject {
                 put("type", "get_mcp_servers_response")
                 put("mcpServers", JsonArray(emptyList()))
