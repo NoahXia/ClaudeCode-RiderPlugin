@@ -94,6 +94,7 @@ class ClaudeMessageRouter(
                             put("errors", JsonArray(emptyList()))
                         })
                         put("settings", buildJsonObject {})
+                        put("models", buildModelsArray())
                     })
                 })
             "get_auth_status"         -> handleGetAuthStatus(requestId)
@@ -525,5 +526,34 @@ class ClaudeMessageRouter(
             put("response", response)
         }
         browserManager.sendToWebview(message.toString())
+    }
+
+    private fun buildModelsArray(): JsonArray {
+        data class Model(
+            val value: String,
+            val label: String,
+            val description: String,
+            val supportsEffort: Boolean = false,
+            val supportsAutoMode: Boolean = false,
+            val supportsFastMode: Boolean = false
+        )
+        val models = listOf(
+            Model("claude-opus-4-7",   "Claude Opus 4.7",   "Most powerful model for highly complex tasks", supportsEffort = true),
+            Model("claude-sonnet-4-6", "Claude Sonnet 4.6", "Balanced model — speed and intelligence"),
+            Model("claude-haiku-4-5",  "Claude Haiku 4.5",  "Fast and efficient for simpler tasks")
+        )
+        return JsonArray(models.map { m ->
+            buildJsonObject {
+                put("value", m.value)
+                put("label", m.label)
+                put("description", m.description)
+                put("supportsEffort", m.supportsEffort)
+                put("supportsAutoMode", m.supportsAutoMode)
+                put("supportsFastMode", m.supportsFastMode)
+                if (m.supportsEffort) put("supportedEffortLevels", JsonArray(listOf(
+                    JsonPrimitive("low"), JsonPrimitive("medium"), JsonPrimitive("high")
+                )))
+            }
+        })
     }
 }
