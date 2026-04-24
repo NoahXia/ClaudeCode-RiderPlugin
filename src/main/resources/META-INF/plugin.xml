@@ -1,0 +1,80 @@
+<idea-plugin>
+    <id>com.anthropic.claudecode.rider</id>
+    <name>Claude Code</name>
+    <vendor email="support@anthropic.com" url="https://anthropic.com">Anthropic</vendor>
+
+    <description><![CDATA[
+        Claude Code AI coding assistant integrated into JetBrains Rider.<br/>
+        Provides an embedded chat interface powered by the Claude Code CLI.<br/>
+        <br/>
+        Features:<br/>
+        <ul>
+            <li>Embedded Claude Code chat panel (JCEF webview)</li>
+            <li>Keyboard shortcuts for quick access</li>
+            <li>IDE context integration (current file, selection)</li>
+            <li>Configurable Claude executable path</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.rider</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+
+        <!-- Tool Window -->
+        <toolWindow
+            id="Claude"
+            anchor="right"
+            secondary="false"
+            icon="/icons/claude-logo.svg"
+            factoryClass="com.anthropic.claudecode.rider.toolwindow.ClaudeToolWindowFactory"
+            canCloseContents="false"/>
+
+        <!-- Application-level settings storage -->
+        <applicationService
+            serviceImplementation="com.anthropic.claudecode.rider.settings.ClaudeSettings"/>
+
+        <!-- Settings UI page under Tools -->
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.anthropic.claudecode.rider.settings.ClaudeSettingsConfigurable"
+            id="com.anthropic.claudecode.rider.settings"
+            displayName="Claude Code"/>
+
+        <!-- Project-level Claude process manager -->
+        <projectService
+            serviceImplementation="com.anthropic.claudecode.rider.process.ClaudeProcessManager"/>
+
+        <!-- Startup activity: checks for Git Bash on Windows -->
+        <postStartupActivity
+            implementation="com.anthropic.claudecode.rider.ClaudeStartupActivity"/>
+
+        <!-- Notification group for Claude Code alerts -->
+        <notificationGroup
+            id="Claude Code"
+            displayType="BALLOON"
+            isLogByDefault="false"/>
+
+    </extensions>
+
+    <actions>
+        <!-- Open/focus the Claude tool window: Ctrl+Escape -->
+        <action
+            id="ClaudeCode.Focus"
+            class="com.anthropic.claudecode.rider.actions.OpenClaudeAction"
+            text="Open Claude"
+            description="Open or focus the Claude Code tool window">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl ESCAPE"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
+        <!-- Start a new Claude conversation: Ctrl+Shift+Escape -->
+        <action
+            id="ClaudeCode.NewConversation"
+            class="com.anthropic.claudecode.rider.actions.NewConversationAction"
+            text="New Claude Conversation"
+            description="Start a new conversation in Claude Code">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift ESCAPE"/>
+        </action>
+    </actions>
+
+</idea-plugin>
