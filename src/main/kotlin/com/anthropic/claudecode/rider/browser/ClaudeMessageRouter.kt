@@ -38,6 +38,7 @@ class ClaudeMessageRouter(
 ) : CefMessageRouterHandlerAdapter() {
 
     private val log = Logger.getInstance(ClaudeMessageRouter::class.java)
+    private val deletedSessionIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     override fun onQuery(
         browser: CefBrowser?,
@@ -258,6 +259,7 @@ class ClaudeMessageRouter(
 
             Files.list(projectDir).use { stream ->
                 stream.filter { it.toString().endsWith(".jsonl") }
+                      .filter { !deletedSessionIds.contains(it.fileName.toString().removeSuffix(".jsonl")) }
                       .sorted { a, b ->
                           Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a))
                       }
@@ -385,6 +387,7 @@ class ClaudeMessageRouter(
             }
             if (file != null) {
                 Files.delete(file)
+                deletedSessionIds.add(sessionId)
                 log.info("Deleted session $sessionId")
             }
         } catch (e: Exception) {
