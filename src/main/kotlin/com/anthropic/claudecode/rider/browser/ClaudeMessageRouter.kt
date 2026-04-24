@@ -120,8 +120,15 @@ class ClaudeMessageRouter(
             "dismiss_onboarding"      -> sendResponse(requestId, buildJsonObject { put("type", "dismiss_onboarding_response") })
             "dismiss_terminal_banner" -> sendResponse(requestId, buildJsonObject { put("type", "dismiss_terminal_banner_response") })
             "dismiss_review_upsell_banner" -> sendResponse(requestId, buildJsonObject { put("type", "dismiss_review_upsell_banner_response") })
-            "list_plugins"            -> sendResponse(requestId, buildJsonObject { put("type", "list_plugins_response"); put("plugins", JsonArray(emptyList())) })
-            "get_mcp_servers"         -> sendResponse(requestId, buildJsonObject { put("type", "get_mcp_servers_response"); put("servers", JsonArray(emptyList())) })
+            "list_plugins"            -> sendResponse(requestId, buildJsonObject {
+                put("type", "list_plugins_response")
+                put("installed", JsonArray(emptyList()))
+                put("available", JsonArray(emptyList()))
+            })
+            "get_mcp_servers"         -> sendResponse(requestId, buildJsonObject {
+                put("type", "get_mcp_servers_response")
+                put("mcpServers", JsonArray(emptyList()))
+            })
             "get_context_usage"       -> sendResponse(requestId, buildJsonObject { put("type", "get_context_usage_response") })
             "check_git_status"        -> handleCheckGitStatus(requestId, req)
             "list_files_request"      -> sendResponse(requestId, buildJsonObject { put("type", "list_files_response"); put("files", JsonArray(emptyList())) })
