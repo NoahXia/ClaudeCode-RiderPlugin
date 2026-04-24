@@ -98,6 +98,14 @@ class ClaudeMessageRouter(
                     })
                 })
             "get_auth_status"         -> handleGetAuthStatus(requestId)
+            "login"                   -> sendResponse(requestId, buildJsonObject {
+                put("type", "login_response")
+                put("auth", buildJsonObject {
+                    put("authMethod", "claudeai")
+                    put("email", JsonNull)
+                    put("subscriptionType", JsonNull)
+                })
+            })
             "list_sessions_request"   -> handleListSessions(requestId)
             "get_session_request"     -> handleGetSession(requestId, req)
             "new_conversation_tab"    -> handleNewConversationTab(requestId, req)
