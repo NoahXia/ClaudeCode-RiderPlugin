@@ -538,9 +538,32 @@ class ClaudeMessageRouter(
             val supportsFastMode: Boolean = false
         )
         val models = listOf(
-            Model("claude-opus-4-7",   "Claude Opus 4.7",   "Most powerful model for highly complex tasks", supportsEffort = true),
-            Model("claude-sonnet-4-6", "Claude Sonnet 4.6", "Balanced model — speed and intelligence"),
-            Model("claude-haiku-4-5",  "Claude Haiku 4.5",  "Fast and efficient for simpler tasks")
+            Model(
+                value = "default",
+                label = "Default (recommended)",
+                description = "Use the default model (currently Sonnet 4.6) · $3/$15 per Mtok"
+            ),
+            Model(
+                value = "claude-sonnet-4-6-20251001",
+                label = "Sonnet (1M context)",
+                description = "Sonnet 4.6 for long sessions · $3/$15 per Mtok"
+            ),
+            Model(
+                value = "claude-opus-4-7-20250514",
+                label = "Opus 4.7 (1M context)",
+                description = "Opus 4.7 with 1M context · Most capable for complex work · $5/$25 per Mtok",
+                supportsEffort = true
+            ),
+            Model(
+                value = "claude-haiku-4-5-20251001",
+                label = "Haiku",
+                description = "Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok"
+            ),
+            Model(
+                value = "claude-sonnet-4-6",
+                label = "Sonnet 4.6",
+                description = "claude-sonnet-4-6"
+            )
         )
         return JsonArray(models.map { m ->
             buildJsonObject {
