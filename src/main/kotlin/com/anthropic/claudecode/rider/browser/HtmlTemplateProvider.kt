@@ -338,7 +338,8 @@ object HtmlTemplateProvider {
         // Hide "Switch account" command item — not applicable in the Rider plugin.
         var observer = new MutationObserver(function () {
             document.querySelectorAll('[class*="commandLabel"]').forEach(function (el) {
-                if (el.textContent.trim() === 'Switch account') {
+                var text = el.textContent.trim();
+                if (text === 'Switch account' || text === 'General config') {
                     var item = el.closest('[class*="commandItem"]');
                     if (item) item.style.display = 'none';
                 }
