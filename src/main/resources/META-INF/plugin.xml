@@ -4,16 +4,40 @@
     <vendor email="support@anthropic.com" url="https://anthropic.com">Anthropic</vendor>
 
     <description><![CDATA[
-        Claude Code AI coding assistant integrated into JetBrains Rider.<br/>
-        Provides an embedded chat interface powered by the Claude Code CLI.<br/>
-        <br/>
-        Features:<br/>
+        <p>
+            Brings the full <a href="https://claude.ai/code">Claude Code</a> AI coding assistant
+            directly into JetBrains Rider, reusing the official VS Code extension's React UI via JCEF.
+        </p>
+
+        <h3>Features</h3>
         <ul>
-            <li>Embedded Claude Code chat panel (JCEF webview)</li>
-            <li>Keyboard shortcuts for quick access</li>
-            <li>IDE context integration (current file, selection)</li>
-            <li>Configurable Claude executable path</li>
+            <li><b>Embedded chat UI</b> — the complete Claude Code interface runs inside a native Rider tool window, no browser required</li>
+            <li><b>Full conversation management</b> — create, resume, and delete past sessions stored in <code>~/.claude/projects/</code></li>
+            <li><b>IDE theme adaptation</b> — reads the IDE color palette and editor font at startup; recolors automatically when you switch themes</li>
+            <li><b>Live status icon</b> — tool window icon shows idle / pending (blue dot) / done (orange dot) as Claude works</li>
+            <li><b>Editor context integration</b> — passes selected text, file path, line range, and language to Claude; Claude can navigate you to a file/line in return</li>
+            <li><b>Git awareness</b> — reports the current git branch to Claude for every session</li>
+            <li><b>Persistent settings</b> — permission mode, model, thinking level, and custom environment variables survive IDE restarts</li>
         </ul>
+
+        <h3>Keyboard Shortcuts</h3>
+        <ul>
+            <li><b>Ctrl+Escape</b> — focus the Claude tool window</li>
+            <li><b>Ctrl+Shift+Escape</b> — start a new conversation</li>
+        </ul>
+
+        <h3>Requirements</h3>
+        <ul>
+            <li>JetBrains Rider 2022.2 or newer</li>
+            <li><a href="https://claude.ai/code">Claude CLI</a> (<code>claude</code>) on your <code>PATH</code>, or configured under <b>Settings → Tools → Claude Code</b></li>
+        </ul>
+
+        <h3>Settings</h3>
+        <p>
+            Open <b>Settings → Tools → Claude Code</b> to configure the Claude executable path
+            (with a file-browser button and a <i>Test Connection</i> button), initial permission mode,
+            Ctrl+Enter send behavior, and extra environment variables.
+        </p>
     ]]></description>
 
     <depends>com.intellij.modules.rider</depends>

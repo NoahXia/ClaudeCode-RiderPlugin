@@ -34,8 +34,19 @@ intellijPlatform {
         id = "com.anthropic.claudecode.rider"
         name = "Claude Code"
         version = project.version.toString()
-        description = "Claude Code AI coding assistant for JetBrains Rider"
-        changeNotes = "Initial MVP release"
+        description = providers.provider { file("src/main/resources/META-INF/plugin.xml").readText()
+            .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
+        changeNotes = """
+            <ul>
+                <li>IDE theme adaptation: reads IDE palette and editor font, reloads on theme switch</li>
+                <li>Tool window icon states: idle / pending / done</li>
+                <li>check_git_status RPC with real branch detection</li>
+                <li>set_model / set_permission_mode / set_thinking_level persist to settings</li>
+                <li>get_current_selection returns line numbers and language ID</li>
+                <li>Settings UI: Browse button for executable path, Test Connection button</li>
+                <li>Fixed MCP servers and Plugins page crashes</li>
+            </ul>
+        """
     }
 
     pluginVerification {
