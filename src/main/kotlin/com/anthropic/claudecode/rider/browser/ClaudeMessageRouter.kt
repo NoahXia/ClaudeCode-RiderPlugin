@@ -61,6 +61,10 @@ class ClaudeMessageRouter(
                 "close_channel"   -> handleCloseChannel(json)
                 "interrupt_claude"-> handleInterruptClaude(json)
                 "retry_load"      -> { ApplicationManager.getApplication().invokeLater { browserManager.loadWebview() } }
+                // Webview response to a tool_permission_request we sent earlier
+                "response"        -> handleWebviewResponse(json)
+                // Webview cancelled an outstanding request (e.g. user dismissed permission dialog)
+                "cancel_request"  -> handleCancelRequest(json)
                 else              -> log.debug("Unhandled top-level message type: $type")
             }
 
@@ -502,6 +506,19 @@ class ClaudeMessageRouter(
         val channelId = json["channelId"]?.jsonPrimitive?.contentOrNull ?: return
         log.info("interrupt_claude $channelId")
         ClaudeProcessManager.getInstance(project).interruptChannel(channelId)
+    }
+
+    /** Handles a webview `{type:"response"}` — typically the result of a tool_permission_request. */
+    private fun handleWebviewResponse(json: JsonObject) {
+        val requestId = json["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+        val response  = json["response"]?.jsonObject ?: return
+        ClaudeProcessManager.getInstance(project).handlePermissionResponse(requestId, response)
+    }
+
+    /** Handles a webview `{type:"cancel_request"}` — user dismissed the permission dialog. */
+    private fun handleCancelRequest(json: JsonObject) {
+        val requestId = json["targetRequestId"]?.jsonPrimitive?.contentOrNull ?: return
+        ClaudeProcessManager.getInstance(project).cancelPermissionRequest(requestId)
     }
 
     // ── IDE integration ──────────────────────────────────────────────────────
