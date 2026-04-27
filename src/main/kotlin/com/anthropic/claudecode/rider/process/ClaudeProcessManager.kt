@@ -37,6 +37,10 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     private data class Channel(val process: Process, val job: Job)
     private val channels = ConcurrentHashMap<String, Channel>()
 
+    /** Channel IDs that were closed on purpose (Stop button, close_channel, dispose).
+     *  Processes exiting from this set are never treated as unexpected crashes. */
+    private val intentionallyClosed = ConcurrentHashMap.newKeySet<String>()
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -102,11 +106,12 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
                     log.debug("Channel $channelId stdout ended: ${e.message}")
                 } finally {
                     val exitCode = try { proc.exitValue() } catch (_: IllegalThreadStateException) { -1 }
-                    log.info("Claude channel $channelId process exited (code=$exitCode)")
+                    val wasIntentional = intentionallyClosed.remove(channelId)
+                    log.info("Claude channel $channelId process exited (code=$exitCode intentional=$wasIntentional)")
                     channels.remove(channelId)
                     sendCloseChannel(channelId, null)
                     ClaudeIconManager.setDone(project)
-                    if (exitCode != 0 && exitCode != 130) {
+                    if (exitCode != 0 && !wasIntentional) {
                         ApplicationManager.getApplication().invokeLater {
                             NotificationGroupManager.getInstance()
                                 .getNotificationGroup("Claude Code")
@@ -150,6 +155,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
 
     /** Kills the process for [channelId] and removes it from the map. */
     fun closeChannel(channelId: String) {
+        intentionallyClosed.add(channelId)
         val channel = channels.remove(channelId) ?: return
         channel.job.cancel()
         channel.process.destroy()
@@ -158,6 +164,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
 
     /** Sends SIGINT / destroyForcibly to interrupt the running Claude operation. */
     fun interruptChannel(channelId: String) {
+        intentionallyClosed.add(channelId)
         channels[channelId]?.process?.let { proc ->
             try {
                 // On Unix send SIGINT; on Windows destroyForcibly is the fallback
@@ -212,6 +219,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
 
     override fun dispose() {
         scope.cancel()
+        intentionallyClosed.addAll(channels.keys)
         channels.values.forEach { it.job.cancel(); it.process.destroy() }
         channels.clear()
     }
