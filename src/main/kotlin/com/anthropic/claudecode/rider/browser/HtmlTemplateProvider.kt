@@ -271,19 +271,38 @@ object HtmlTemplateProvider {
         /* Ensure the segmented tab bar has breathing room on the left */
         [class*="segmented_OOQiHg"] { margin-left: 2px; }
 
-        /* Text injected via insert_at_mention is wrapped in inputMentionChip spans.
-           Strip the chip styling so it renders as plain readable text with newlines. */
-        /* Preserve newlines in the input contenteditable so \n text nodes between
-           adjacent chips are not collapsed by the default white-space: normal. */
-        [contenteditable] { white-space: pre-wrap !important; }
+        /* Text injected via insert_at_mention is wrapped in pill chips.
+           Strip chip styling so it renders as plain readable multi-line text. */
 
+        /* Container: remove pill chrome */
         [class*="inputMentionChip"] {
             background: transparent !important;
             color: var(--vscode-foreground, #cccccc) !important;
             box-shadow: none !important;
             border-radius: 0 !important;
+            border: none !important;
+            padding: 0 !important;
             white-space: pre-wrap !important;
         }
+
+        /* Inner label (.label_lcdCYQ): override the nowrap+ellipsis that collapses newlines */
+        [class*="inputMentionChip"] [class*="label_"] {
+            white-space: pre-wrap !important;
+            overflow: visible !important;
+            text-overflow: unset !important;
+            color: var(--vscode-foreground, #cccccc) !important;
+            font-size: inherit !important;
+            font-weight: normal !important;
+        }
+
+        /* Hide file/thumb icons inside injected chips */
+        [class*="inputMentionChip"] [class*="icon_"],
+        [class*="inputMentionChip"] [class*="thumbIcon_"] {
+            display: none !important;
+        }
+
+        /* Preserve \n text-nodes between adjacent chips */
+        [contenteditable] { white-space: pre-wrap !important; }
 
         /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
