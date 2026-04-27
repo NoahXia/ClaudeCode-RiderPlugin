@@ -108,9 +108,38 @@ class ClaudeBrowserManager(
                 errorText: String?,
                 failedUrl: String?
             ) {
+                // ERR_ABORTED (-3) fires on every navigation cancel — not a real error
+                if (errorCode?.code == -3) return
+                if (frame?.isMain != true) return
+
                 log.warn("Claude webview load error: $errorCode - $errorText (url: $failedUrl)")
+                val html = buildErrorPage(errorText ?: "Unknown error", errorCode?.code ?: 0)
+                ApplicationManager.getApplication().invokeLater {
+                    this@ClaudeBrowserManager.browser.loadHTML(html)
+                }
             }
         }, browser.cefBrowser)
+    }
+
+    private fun buildErrorPage(errorText: String, errorCode: Int): String {
+        val safeText = errorText.replace("&", "&amp;").replace("<", "&lt;")
+        return """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/>
+<style>
+  body { background:#1e1e1e; color:#ccc; font-family:sans-serif;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+  .box { text-align:center; max-width:380px; }
+  h3 { color:#f48771; margin-bottom:8px; }
+  p  { color:#999; font-size:13px; margin:4px 0 20px; }
+  button { background:#0e639c; color:#fff; border:none; border-radius:4px;
+           padding:8px 20px; font-size:13px; cursor:pointer; }
+  button:hover { background:#1177bb; }
+</style></head>
+<body><div class="box">
+  <h3>Failed to load Claude Code</h3>
+  <p>$safeText (code $errorCode)</p>
+  <button onclick="window.cefQuery({request:JSON.stringify({type:'retry_load'}),persistent:false,onSuccess:function(){},onFailure:function(){}})">Retry</button>
+</div></body></html>"""
     }
 
     /** Reload the webview when the user switches the IDE theme. */

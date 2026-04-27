@@ -60,6 +60,7 @@ class ClaudeMessageRouter(
                 "io_message"      -> handleIoMessage(json)
                 "close_channel"   -> handleCloseChannel(json)
                 "interrupt_claude"-> handleInterruptClaude(json)
+                "retry_load"      -> { ApplicationManager.getApplication().invokeLater { browserManager.loadWebview() } }
                 else              -> log.debug("Unhandled top-level message type: $type")
             }
 
