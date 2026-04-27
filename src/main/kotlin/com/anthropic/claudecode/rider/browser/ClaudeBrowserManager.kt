@@ -98,6 +98,11 @@ class ClaudeBrowserManager(
             override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
                 if (frame?.isMain == true) {
                     log.info("Claude webview loaded (status $httpStatusCode)")
+                    // Push the current file context once the webview is ready so Claude
+                    // immediately knows which file is open even before the user switches tabs.
+                    ApplicationManager.getApplication().invokeLater {
+                        sendCurrentFileContext()
+                    }
                 }
             }
 
@@ -174,7 +179,7 @@ class ClaudeBrowserManager(
         )
     }
 
-    private fun sendCurrentFileContext() {
+    internal fun sendCurrentFileContext() {
         val now = System.currentTimeMillis()
         if (now - lastSelectionSentMs < 150) return
         lastSelectionSentMs = now

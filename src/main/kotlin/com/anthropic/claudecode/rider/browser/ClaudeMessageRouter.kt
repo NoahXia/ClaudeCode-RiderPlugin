@@ -211,6 +211,9 @@ class ClaudeMessageRouter(
             })
         }
         sendResponse(requestId, response)
+
+        // Push the current file context now that the React app is mounted and listening.
+        browserManager.sendCurrentFileContext()
     }
 
     // ── auth status ─────────────────────────────────────────────────────────
