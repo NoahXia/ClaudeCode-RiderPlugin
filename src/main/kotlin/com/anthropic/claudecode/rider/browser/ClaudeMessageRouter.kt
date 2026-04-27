@@ -380,6 +380,9 @@ class ClaudeMessageRouter(
             sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
             return
         }
+        // Record as deleted immediately so subsequent list_sessions calls exclude it,
+        // regardless of whether the file is found on disk.
+        deletedSessionIds.add(sessionId)
         try {
             val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
             val file = Files.walk(claudeDir, 2).use { stream ->
@@ -387,8 +390,9 @@ class ClaudeMessageRouter(
             }
             if (file != null) {
                 Files.delete(file)
-                deletedSessionIds.add(sessionId)
                 log.info("Deleted session $sessionId")
+            } else {
+                log.warn("Delete session $sessionId: file not found on disk (still suppressed from list)")
             }
         } catch (e: Exception) {
             log.warn("Failed to delete session $sessionId", e)
