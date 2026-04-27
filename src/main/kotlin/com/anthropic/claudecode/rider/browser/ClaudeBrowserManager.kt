@@ -19,6 +19,7 @@ import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.Color
 import java.awt.Component
+import kotlinx.serialization.json.Json
 
 class ClaudeBrowserManager(
     private val project: Project,
@@ -205,21 +206,37 @@ class ClaudeBrowserManager(
     }
 
     /**
-     * Inserts [text] into the active session's input box via the webview's
-     * `insert_at_mention` request type. Used by editor context-menu actions.
+     * Inserts [text] into the active session's input box.
+     *
+     * Sets contenteditable.textContent directly (preserves \n as text-node characters),
+     * then fires a native `input` event so React's onInput handler picks up the new value
+     * and updates state.  This avoids the insert_at_mention mention-chip path, which
+     * wraps the text in a styled chip that collapses newlines and can be invisible.
      */
     fun insertAtMention(text: String) {
-        val escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        val jsonText = Json.encodeToString(kotlinx.serialization.serializer<String>(), text)
         val script = """
-            window.__fromExtension({
-                type: 'from-extension',
-                message: {
-                    type: 'request',
-                    channelId: '',
-                    requestId: '',
-                    request: { type: 'insert_at_mention', text: `$escaped` }
-                }
-            });
+(function(t) {
+    var el = document.querySelector('[role="textbox"][contenteditable="true"]')
+           || document.querySelector('[contenteditable="true"]');
+    if (!el) return;
+    el.textContent = t;
+    // Place cursor at the end.
+    var sel = window.getSelection();
+    var range = document.createRange();
+    if (el.lastChild) {
+        range.setStartAfter(el.lastChild);
+    } else {
+        range.selectNodeContents(el);
+        range.collapse(false);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.focus();
+    // Notify React — onInput reads event.target.textContent which now has the full text
+    // including \n characters, so React state D is updated with newlines intact.
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+})($jsonText);
         """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
