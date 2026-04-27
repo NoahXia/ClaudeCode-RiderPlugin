@@ -214,7 +214,16 @@ class ClaudeBrowserManager(
      * ([class*="inputMentionChip"]) so the text appears as plain, pre-wrapped text.
      */
     fun insertAtMention(text: String) {
-        val escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        // Escape for a JS template literal.  We must also convert actual newline/CR
+        // characters to their escape-sequence equivalents (\n / \r) because CEF's
+        // executeJavaScript strips bare newlines from the script string before
+        // handing it to the renderer, which would collapse "\nline2" → "line2".
+        val escaped = text
+            .replace("\\", "\\\\")
+            .replace("`", "\\`")
+            .replace("\r\n", "\\n")
+            .replace("\r", "\\n")
+            .replace("\n", "\\n")
         val script = """
 window.__fromExtension({
     type: 'from-extension',
