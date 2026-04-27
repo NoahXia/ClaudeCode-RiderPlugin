@@ -297,10 +297,14 @@ class ClaudeBrowserManager(
      * Sends a message to the webview wrapped in the { type: "from-extension", message: ... }
      * envelope that the VS Code React bundle listens for.
      * [innerJson] is the inner message JSON string (e.g. a "response" or "io_message" object).
+     *
+     * Uses base64 encoding to safely transmit any JSON content regardless of special characters
+     * (backticks, ${...} template expressions, backslashes, etc.).
      */
     fun sendToWebview(innerJson: String) {
-        val escaped = innerJson.replace("\\", "\\\\").replace("`", "\\`")
-        val script = "window.__fromExtension({type:'from-extension',message:JSON.parse(`$escaped`)})"
+        val base64 = java.util.Base64.getEncoder()
+            .encodeToString(innerJson.toByteArray(Charsets.UTF_8))
+        val script = "window.__fromExtension({type:'from-extension',message:JSON.parse(atob('$base64'))})"
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
 

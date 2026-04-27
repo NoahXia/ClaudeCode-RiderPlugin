@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.1"
+version = "1.0.2"
 
 kotlin {
     jvmToolchain(17)
@@ -49,6 +49,9 @@ intellijPlatform {
             .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
         changeNotes = """
             <ul>
+                <li>Fix: Bash/tool call blocks now display correctly — added <code>--include-partial-messages</code> so Claude streams incremental events the webview needs to render tool use in real time</li>
+                <li>Fix: <code>sendToWebview</code> now uses base64 encoding to safely transmit any JSON (previously backtick template literals could break on <code>${'$'}{...}</code> patterns in tool output)</li>
+                <li>Fix: <code>--permission-mode</code> is now forwarded to the Claude CLI from the webview setting</li>
                 <li>IDE theme adaptation: reads IDE palette and editor font, reloads on theme switch</li>
                 <li>Tool window icon states: idle / pending / done</li>
                 <li>Tool window title updates with session name via rename_tab</li>

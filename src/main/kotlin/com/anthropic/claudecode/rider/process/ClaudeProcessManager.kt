@@ -78,9 +78,12 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             "--output-format", "stream-json",
             "--verbose",
             "--input-format", "stream-json",
-            "--permission-prompt-tool", "stdio"
+            "--permission-prompt-tool", "stdio",
+            "--include-partial-messages"
         )
         if (!resume.isNullOrBlank()) args += listOf("--resume", resume)
+        if (permissionMode.isNotBlank() && permissionMode != "default")
+            args += listOf("--permission-mode", permissionMode)
 
         try {
             val pb = ProcessBuilder(args)
