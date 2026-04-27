@@ -376,6 +376,39 @@ object HtmlTemplateProvider {
         window.IS_FULL_EDITOR = ${isFullEditor};
         window.IS_SESSION_LIST_ONLY = ${isSessionListOnly};
 
+        // Intercept execCommand("insertText") when the text contains newlines.
+        // The React input component uses execCommand to insert text, which converts
+        // \n to <br> elements.  textContent then strips those \n, so React state
+        // never receives the newlines and the mirror renders everything on one line.
+        // Instead we insert a real text node, whose \n characters textContent DOES
+        // preserve, so the React state update (setTimeout → A(textContent)) gets
+        // the correct multi-line string and the mirror renders it with pre-wrap.
+        (function () {
+            var _origExec = document.execCommand.bind(document);
+            document.execCommand = function (cmd, showUI, val) {
+                if (cmd === 'insertText' && val != null && val.indexOf('\n') >= 0) {
+                    var el = document.activeElement;
+                    if (el && el.contentEditable === 'true') {
+                        var sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0) {
+                            var range = sel.getRangeAt(0);
+                            range.deleteContents();
+                            var node = document.createTextNode(val);
+                            range.insertNode(node);
+                            range.setStartAfter(node);
+                            range.collapse(true);
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                        } else {
+                            el.textContent = (el.textContent || '') + val;
+                        }
+                        return true;
+                    }
+                }
+                return _origExec(cmd, showUI, val);
+            };
+        }());
+
     }());
     </script>
 
