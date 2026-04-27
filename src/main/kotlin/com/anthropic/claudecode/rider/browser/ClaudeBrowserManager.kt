@@ -19,6 +19,7 @@ import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.Color
 import java.awt.Component
+import kotlinx.serialization.json.Json
 
 class ClaudeBrowserManager(
     private val project: Project,
@@ -205,21 +206,31 @@ class ClaudeBrowserManager(
     }
 
     /**
-     * Inserts [text] into the active session's input box via the webview's
-     * `insert_at_mention` request type.  Used by editor context-menu actions.
+     * Inserts [text] into the active session's input box.
+     *
+     * Uses execCommand('insertText') via direct DOM injection rather than the
+     * insert_at_mention RPC, because the at-mention path adds the text to the
+     * mention-token set which renders it as a styled chip — invisible on a dark
+     * background when not selected.  execCommand inserts plain text that React
+     * picks up via native input events.
      */
     fun insertAtMention(text: String) {
-        val escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        // JSON-encode so the string is safe to embed as a JS literal
+        // regardless of quotes, backticks, backslashes, or template expressions.
+        val jsonText = Json.encodeToString(kotlinx.serialization.serializer<String>(), text)
         val script = """
-            window.__fromExtension({
-                type: 'from-extension',
-                message: {
-                    type: 'request',
-                    channelId: '',
-                    requestId: '',
-                    request: { type: 'insert_at_mention', text: `$escaped` }
-                }
-            });
+(function(t) {
+    var el = document.querySelector('[role="textbox"][contenteditable="true"]')
+           || document.querySelector('[contenteditable="true"]');
+    if (!el) return;
+    el.focus();
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('insertText', false, t);
+})($jsonText);
         """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
