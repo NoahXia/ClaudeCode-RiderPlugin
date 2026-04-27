@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.0-mvp"
+version = "1.0.1"
 
 kotlin {
     jvmToolchain(17)
