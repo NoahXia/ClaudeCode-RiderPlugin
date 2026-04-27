@@ -273,6 +273,10 @@ object HtmlTemplateProvider {
 
         /* Text injected via insert_at_mention is wrapped in inputMentionChip spans.
            Strip the chip styling so it renders as plain readable text with newlines. */
+        /* Preserve newlines in the input contenteditable so \n text nodes between
+           adjacent chips are not collapsed by the default white-space: normal. */
+        [contenteditable] { white-space: pre-wrap !important; }
+
         [class*="inputMentionChip"] {
             background: transparent !important;
             color: var(--vscode-foreground, #cccccc) !important;
