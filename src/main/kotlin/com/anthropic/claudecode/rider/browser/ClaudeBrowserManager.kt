@@ -208,34 +208,49 @@ class ClaudeBrowserManager(
     /**
      * Inserts [text] into the active session's input box.
      *
-     * Sets contenteditable.textContent directly (preserves \n as text-node characters),
-     * then fires a native `input` event so React's onInput handler picks up the new value
-     * and updates state.  This avoids the insert_at_mention mention-chip path, which
-     * wraps the text in a styled chip that collapses newlines and can be invisible.
+     * Calls the React onInput prop directly via __reactProps to update React
+     * state reliably (native InputEvent dispatch is unreliable in JCEF because
+     * React's synthetic event system may not pick it up). If no active session
+     * textbox is found, triggers create_new_conversation first and retries.
      */
     fun insertAtMention(text: String) {
         val jsonText = Json.encodeToString(kotlinx.serialization.serializer<String>(), text)
         val script = """
 (function(t) {
-    var el = document.querySelector('[role="textbox"][contenteditable="true"]')
-           || document.querySelector('[contenteditable="true"]');
-    if (!el) return;
-    el.textContent = t;
-    // Place cursor at the end.
-    var sel = window.getSelection();
-    var range = document.createRange();
-    if (el.lastChild) {
-        range.setStartAfter(el.lastChild);
-    } else {
+    function inject(el) {
+        el.textContent = t;
+        el.focus();
+        var sel = window.getSelection();
+        var range = document.createRange();
         range.selectNodeContents(el);
         range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        // Call React's onInput handler directly via __reactProps so React state
+        // (which drives the visible mentionMirror overlay) gets updated.
+        var pk = Object.keys(el).find(function(k) { return k.startsWith('__reactProps'); });
+        if (pk && el[pk] && el[pk].onInput) {
+            el[pk].onInput({ target: el, currentTarget: el,
+                             preventDefault: function(){}, stopPropagation: function(){} });
+        } else {
+            el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+        }
     }
-    sel.removeAllRanges();
-    sel.addRange(range);
-    el.focus();
-    // Notify React — onInput reads event.target.textContent which now has the full text
-    // including \n characters, so React state D is updated with newlines intact.
-    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+
+    var el = document.querySelector('[role="textbox"][contenteditable="true"]');
+    if (el) {
+        inject(el);
+    } else {
+        // No active session showing a textbox — trigger new conversation then retry.
+        window.__fromExtension({ type: 'from-extension', message: {
+            type: 'request', channelId: '', requestId: '',
+            request: { type: 'create_new_conversation' }
+        }});
+        setTimeout(function() {
+            var el2 = document.querySelector('[role="textbox"][contenteditable="true"]');
+            if (el2) inject(el2);
+        }, 500);
+    }
 })($jsonText);
         """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
