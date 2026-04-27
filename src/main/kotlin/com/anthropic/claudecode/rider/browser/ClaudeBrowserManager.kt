@@ -19,7 +19,6 @@ import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.Color
 import java.awt.Component
-import kotlinx.serialization.json.Json
 
 class ClaudeBrowserManager(
     private val project: Project,
@@ -206,52 +205,44 @@ class ClaudeBrowserManager(
     }
 
     /**
-     * Inserts [text] into the active session's input box.
+     * Inserts [text] into the active session's input box via the webview's
+     * insert_at_mention request. This goes through the React fromHost message
+     * queue, which is resilient to JCEF timing and does not require the DOM
+     * to be in a specific state when called.
      *
-     * Calls the React onInput prop directly via __reactProps to update React
-     * state reliably (native InputEvent dispatch is unreliable in JCEF because
-     * React's synthetic event system may not pick it up). If no active session
-     * textbox is found, triggers create_new_conversation first and retries.
+     * The visual chip wrapping is neutralised by a CSS override in HtmlTemplateProvider
+     * ([class*="inputMentionChip"]) so the text appears as plain, pre-wrapped text.
      */
     fun insertAtMention(text: String) {
-        val jsonText = Json.encodeToString(kotlinx.serialization.serializer<String>(), text)
+        val escaped = text.replace("\\", "\\\\").replace("`", "\\`")
         val script = """
-(function(t) {
-    function inject(el) {
-        el.textContent = t;
-        el.focus();
-        var sel = window.getSelection();
-        var range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        // Call React's onInput handler directly via __reactProps so React state
-        // (which drives the visible mentionMirror overlay) gets updated.
-        var pk = Object.keys(el).find(function(k) { return k.startsWith('__reactProps'); });
-        if (pk && el[pk] && el[pk].onInput) {
-            el[pk].onInput({ target: el, currentTarget: el,
-                             preventDefault: function(){}, stopPropagation: function(){} });
-        } else {
-            el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
-        }
+window.__fromExtension({
+    type: 'from-extension',
+    message: {
+        type: 'request',
+        channelId: '',
+        requestId: '',
+        request: { type: 'insert_at_mention', text: `$escaped` }
+    }
+});
+        """.trimIndent()
+        browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
 
-    var el = document.querySelector('[role="textbox"][contenteditable="true"]');
-    if (el) {
-        inject(el);
-    } else {
-        // No active session showing a textbox — trigger new conversation then retry.
-        window.__fromExtension({ type: 'from-extension', message: {
-            type: 'request', channelId: '', requestId: '',
-            request: { type: 'create_new_conversation' }
-        }});
-        setTimeout(function() {
-            var el2 = document.querySelector('[role="textbox"][contenteditable="true"]');
-            if (el2) inject(el2);
-        }, 500);
+    /** Tells the webview whether the panel is currently visible.
+     *  insert_at_mention is gated on isVisible.value, so this must be called
+     *  with true before injecting text when the tool window was previously hidden. */
+    fun notifyVisibility(visible: Boolean) {
+        val script = """
+window.__fromExtension({
+    type: 'from-extension',
+    message: {
+        type: 'request',
+        channelId: '',
+        requestId: '',
+        request: { type: 'visibility_changed', isVisible: ${visible} }
     }
-})($jsonText);
+});
         """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }

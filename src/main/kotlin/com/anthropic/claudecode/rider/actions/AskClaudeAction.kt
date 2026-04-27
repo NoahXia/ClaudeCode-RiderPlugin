@@ -1,10 +1,10 @@
 package com.anthropic.claudecode.rider.actions
 
+import com.anthropic.claudecode.rider.browser.ClaudeBrowserManager
 import com.anthropic.claudecode.rider.toolwindow.ClaudeToolWindowPanel
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.wm.ToolWindowManager
 
 /**
@@ -16,21 +16,28 @@ import com.intellij.openapi.wm.ToolWindowManager
 class AskClaudeAction(text: String, private val prefix: String) : AnAction(text) {
 
     override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val editor  = e.getData(CommonDataKeys.EDITOR) ?: return
+        val project  = e.project ?: return
+        val editor   = e.getData(CommonDataKeys.EDITOR) ?: return
         val selected = editor.selectionModel.selectedText?.takeIf { it.isNotBlank() } ?: return
 
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Claude") ?: return
-        if (!toolWindow.isVisible) toolWindow.show()
 
-        // Give JCEF a moment to become visible before injecting text.
-        ApplicationManager.getApplication().invokeLater {
+        val doInject = Runnable {
             val panel = toolWindow.contentManager.contents
                 .mapNotNull { it.component as? ClaudeToolWindowPanel }
-                .firstOrNull() ?: return@invokeLater
+                .firstOrNull() ?: return@Runnable
+            val bm = panel.browserManager ?: return@Runnable
+            val fullText = if (prefix.isBlank()) selected else "$prefix$selected"
+            // Tell webview it is visible so insert_at_mention is not gated out,
+            // then inject the text through the fromHost message queue.
+            bm.notifyVisibility(true)
+            bm.insertAtMention(fullText)
+        }
 
-            val text = if (prefix.isBlank()) selected else "$prefix$selected"
-            panel.browserManager?.insertAtMention(text)
+        if (toolWindow.isVisible) {
+            doInject.run()
+        } else {
+            toolWindow.show(doInject)
         }
     }
 
