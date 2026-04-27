@@ -9,15 +9,32 @@
             directly into JetBrains Rider, reusing the official VS Code extension's React UI via JCEF.
         </p>
 
-        <h3>Features</h3>
+        <h3>Chat &amp; Sessions</h3>
         <ul>
             <li><b>Embedded chat UI</b> — the complete Claude Code interface runs inside a native Rider tool window, no browser required</li>
             <li><b>Full conversation management</b> — create, resume, and delete past sessions stored in <code>~/.claude/projects/</code></li>
-            <li><b>IDE theme adaptation</b> — reads the IDE color palette and editor font at startup; recolors automatically when you switch themes</li>
             <li><b>Live status icon</b> — tool window icon shows idle / pending (blue dot) / done (orange dot) as Claude works</li>
-            <li><b>Editor context integration</b> — passes selected text, file path, line range, and language to Claude; Claude can navigate you to a file/line in return</li>
+        </ul>
+
+        <h3>IDE Integration</h3>
+        <ul>
+            <li><b>Active file context sync</b> — whenever you switch tabs or change the selection, Claude automatically receives the active file path, selected text, line range and language</li>
+            <li><b>Editor right-click menu</b> — right-click any file or selection for <i>Ask Claude</i>, <i>Explain with Claude</i>, <i>Fix with Claude</i>, and <i>Send File to Claude</i></li>
+            <li><b>Navigate to file</b> — Claude can open any file at a specific line in the editor</li>
             <li><b>Git awareness</b> — reports the current git branch to Claude for every session</li>
+        </ul>
+
+        <h3>Appearance</h3>
+        <ul>
+            <li><b>IDE theme adaptation</b> — reads the IDE color palette and editor font at startup; recolors automatically when you switch themes (light and dark supported)</li>
+            <li><b>Editor font injection</b> — webview uses your IDE editor font family and size</li>
+        </ul>
+
+        <h3>Reliability</h3>
+        <ul>
             <li><b>Persistent settings</b> — permission mode, model, thinking level, and custom environment variables survive IDE restarts</li>
+            <li><b>Load failure retry</b> — styled error page with Retry button if the webview fails to load</li>
+            <li><b>Crash notification</b> — balloon notification if the Claude subprocess exits unexpectedly</li>
         </ul>
 
         <h3>Keyboard Shortcuts</h3>

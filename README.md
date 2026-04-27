@@ -4,16 +4,30 @@ A JetBrains Rider plugin that embeds the [Claude Code](https://claude.ai/code) A
 
 ## Features
 
+### Chat & Sessions
 - **Embedded chat UI** — the full Claude Code React interface runs inside a Rider tool window
 - **Claude CLI bridge** — spawns `claude` as a subprocess per conversation, communicating via the stream-JSON protocol
-- **IDE theme adaptation** — reads the IDE's color palette and editor font at startup and on every theme switch; the webview recolors itself automatically
-- **Tool window icon states** — idle / pending (blue dot while Claude is generating) / done (orange dot when finished)
 - **Session management** — lists, resumes and deletes past sessions stored in `~/.claude/projects/`
-- **IDE integration**
-  - `get_current_selection` — passes selected text, file path, line range and language to Claude
-  - `open_file` — Claude can navigate you to a file/line in the editor
-  - `check_git_status` — returns the current git branch for the project
+- **Tool window icon states** — idle / pending (blue dot while Claude is generating) / done (orange dot when finished)
+
+### IDE Integration
+- **Active file context sync** — whenever you switch tabs or change the selection, the webview automatically receives the active file path, selected text, line range and language; Claude always knows what you're looking at
+- **Editor right-click menu** — right-click any file or selection to:
+  - **Ask Claude** — open Claude with cursor in the input box
+  - **Explain with Claude** — send selected code with an explanation prompt
+  - **Fix with Claude** — send selected code with a fix prompt
+  - **Send File to Claude** — inject the current file as an `@path/to/file` mention
+- **Navigate to file** — Claude can open any file at a specific line in the editor via `open_file`
+- **Git awareness** — reports the current git branch to Claude for every session
+
+### Appearance
+- **IDE theme adaptation** — reads the IDE's color palette and editor font at startup and on every theme switch; the webview recolors itself automatically (light and dark themes supported)
+- **Editor font injection** — `--vscode-editor-font-family` and `--vscode-editor-font-size` are set from the IDE's editor font settings
+
+### Settings & Reliability
 - **Persistent settings** — permission mode, model, thinking level, custom env vars, all saved across IDE restarts
+- **Load failure retry** — if the webview fails to load, a styled error page is shown with a Retry button
+- **Crash notification** — if the Claude subprocess exits unexpectedly, a balloon notification is shown
 - **Keyboard shortcuts**
   - `Ctrl+Escape` — focus the Claude tool window
   - `Ctrl+Shift+Escape` — start a new conversation
@@ -53,20 +67,6 @@ JAVA_HOME=/path/to/jdk-17 ./gradlew buildPlugin
 3. Select `claude-code-rider-1.0.0-mvp.zip`
 4. Restart Rider
 
-## Architecture
-
-```
-ClaudeToolWindowPanel          (Swing panel, hosts JCEF browser)
-└── ClaudeBrowserManager       (JBCefBrowser lifecycle, theme injection, LafManagerListener)
-    ├── HtmlTemplateProvider   (generates HTML shell with acquireVsCodeApi() shim + CSS vars)
-    ├── WebviewAssetProvider   (extracts webview/index.{js,css} to temp dir for file:// loading)
-    └── ClaudeMessageRouter    (CefMessageRouter handler — all JS↔Kotlin IPC)
-            │
-            └── ClaudeProcessManager   (project service — one claude subprocess per channel)
-```
-
-**IPC protocol**: the React bundle communicates via `window.cefQuery()` (Kotlin side) / `window.__fromExtension()` (JS side), wrapped in the same `{ type: "from-extension", message }` envelope that the VS Code extension uses — so the unmodified webview bundle works transparently.
-
 ## Settings
 
 Open **Settings → Tools → Claude Code**:
@@ -78,6 +78,28 @@ Open **Settings → Tools → Claude Code**:
 | Initial permission mode | `default` / `acceptEdits` / `plan` / `bypassPermissions` |
 | Use Ctrl+Enter to send | Alternative send shortcut |
 | Environment variables | Extra `NAME=VALUE` pairs passed to every `claude` subprocess |
+
+## Architecture
+
+```
+ClaudeToolWindowPanel          (Swing panel, hosts JCEF browser)
+└── ClaudeBrowserManager       (JBCefBrowser lifecycle, theme injection, LafManagerListener,
+    │                           editor context sync via FileEditorManagerListener + SelectionListener)
+    ├── HtmlTemplateProvider   (generates HTML shell with acquireVsCodeApi() shim + CSS vars)
+    ├── WebviewAssetProvider   (extracts webview/index.{js,css} to temp dir for file:// loading)
+    └── ClaudeMessageRouter    (CefMessageRouter handler — all JS↔Kotlin IPC)
+            │
+            └── ClaudeProcessManager   (project service — one claude subprocess per channel)
+
+actions/
+├── OpenClaudeAction           (Ctrl+Escape — focus tool window)
+├── NewConversationAction      (Ctrl+Shift+Escape — new conversation)
+├── ClaudeEditorActionGroup    (editor right-click "Claude" submenu)
+├── AskClaudeAction            (Ask / Explain with Claude / Fix with Claude)
+└── SendFileAction             (Send File to Claude — injects @relative/path mention)
+```
+
+**IPC protocol**: the React bundle communicates via `window.cefQuery()` (Kotlin side) / `window.__fromExtension()` (JS side), wrapped in the same `{ type: "from-extension", message }` envelope that the VS Code extension uses — so the unmodified webview bundle works transparently.
 
 ## Notes
 
