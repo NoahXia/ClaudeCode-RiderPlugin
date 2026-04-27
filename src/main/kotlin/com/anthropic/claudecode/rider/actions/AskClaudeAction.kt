@@ -27,7 +27,10 @@ class AskClaudeAction(text: String, private val prefix: String) : AnAction(text)
                 .mapNotNull { it.component as? ClaudeToolWindowPanel }
                 .firstOrNull() ?: return@Runnable
             val bm = panel.browserManager ?: return@Runnable
-            val fullText = if (prefix.isBlank()) selected else "$prefix$selected"
+            val fullText = run {
+                val raw = if (prefix.isBlank()) selected else "$prefix$selected"
+                raw.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ')
+            }
             // Tell webview it is visible so insert_at_mention is not gated out,
             // then inject the text through the fromHost message queue.
             bm.notifyVisibility(true)

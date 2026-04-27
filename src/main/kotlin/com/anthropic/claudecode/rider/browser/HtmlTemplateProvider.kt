@@ -272,9 +272,7 @@ object HtmlTemplateProvider {
         [class*="segmented_OOQiHg"] { margin-left: 2px; }
 
         /* Text injected via insert_at_mention is wrapped in pill chips.
-           Strip chip styling so it renders as plain readable multi-line text. */
-
-        /* Container: remove pill chrome */
+           Strip chip styling so it renders as plain readable text. */
         [class*="inputMentionChip"] {
             background: transparent !important;
             color: var(--vscode-foreground, #cccccc) !important;
@@ -282,27 +280,7 @@ object HtmlTemplateProvider {
             border-radius: 0 !important;
             border: none !important;
             padding: 0 !important;
-            white-space: pre-wrap !important;
         }
-
-        /* Inner label (.label_lcdCYQ): override the nowrap+ellipsis that collapses newlines */
-        [class*="inputMentionChip"] [class*="label_"] {
-            white-space: pre-wrap !important;
-            overflow: visible !important;
-            text-overflow: unset !important;
-            color: var(--vscode-foreground, #cccccc) !important;
-            font-size: inherit !important;
-            font-weight: normal !important;
-        }
-
-        /* Hide file/thumb icons inside injected chips */
-        [class*="inputMentionChip"] [class*="icon_"],
-        [class*="inputMentionChip"] [class*="thumbIcon_"] {
-            display: none !important;
-        }
-
-        /* Preserve \n text-nodes between adjacent chips */
-        [contenteditable] { white-space: pre-wrap !important; }
 
         /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -375,39 +353,6 @@ object HtmlTemplateProvider {
         window.IS_SIDEBAR = ${isSidebar};
         window.IS_FULL_EDITOR = ${isFullEditor};
         window.IS_SESSION_LIST_ONLY = ${isSessionListOnly};
-
-        // Intercept execCommand("insertText") when the text contains newlines.
-        // The React input component uses execCommand to insert text, which converts
-        // \n to <br> elements.  textContent then strips those \n, so React state
-        // never receives the newlines and the mirror renders everything on one line.
-        // Instead we insert a real text node, whose \n characters textContent DOES
-        // preserve, so the React state update (setTimeout → A(textContent)) gets
-        // the correct multi-line string and the mirror renders it with pre-wrap.
-        (function () {
-            var _origExec = document.execCommand.bind(document);
-            document.execCommand = function (cmd, showUI, val) {
-                if (cmd === 'insertText' && val != null && val.indexOf('\n') >= 0) {
-                    var el = document.activeElement;
-                    if (el && el.contentEditable === 'true') {
-                        var sel = window.getSelection();
-                        if (sel && sel.rangeCount > 0) {
-                            var range = sel.getRangeAt(0);
-                            range.deleteContents();
-                            var node = document.createTextNode(val);
-                            range.insertNode(node);
-                            range.setStartAfter(node);
-                            range.collapse(true);
-                            sel.removeAllRanges();
-                            sel.addRange(range);
-                        } else {
-                            el.textContent = (el.textContent || '') + val;
-                        }
-                        return true;
-                    }
-                }
-                return _origExec(cmd, showUI, val);
-            };
-        }());
 
     }());
     </script>
