@@ -271,6 +271,16 @@ object HtmlTemplateProvider {
         /* Ensure the segmented tab bar has breathing room on the left */
         [class*="segmented_OOQiHg"] { margin-left: 2px; }
 
+        /* inputMentionChip: text inserted via insert_at_mention is wrapped in a chip span.
+           Override so it renders as plain foreground text instead of a dark invisible chip. */
+        [class*="inputMentionChip"] {
+            background: transparent !important;
+            color: var(--vscode-foreground, #cccccc) !important;
+            border: none !important;
+            padding: 0 !important;
+            white-space: pre-wrap !important;
+        }
+
         /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
