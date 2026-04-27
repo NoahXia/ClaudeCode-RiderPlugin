@@ -165,13 +165,18 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     /** Sends SIGINT / destroyForcibly to interrupt the running Claude operation. */
     fun interruptChannel(channelId: String) {
         intentionallyClosed.add(channelId)
-        channels[channelId]?.process?.let { proc ->
-            try {
-                // On Unix send SIGINT; on Windows destroyForcibly is the fallback
-                Runtime.getRuntime().exec(arrayOf("kill", "-INT", proc.pid().toString()))
-            } catch (e: Exception) {
-                proc.destroyForcibly()
-            }
+        val channel = channels[channelId] ?: return
+        try {
+            // Mirror VS Code extension: send a control_request with subtype "interrupt" to stdin.
+            // Claude handles it gracefully, finishes the turn, then exits with code 0.
+            val requestId = java.util.UUID.randomUUID().toString()
+            val msg = """{"type":"control_request","request_id":"$requestId","request":{"subtype":"interrupt"}}""" + "\n"
+            channel.process.outputStream.write(msg.toByteArray(Charsets.UTF_8))
+            channel.process.outputStream.flush()
+            log.info("Sent interrupt control_request to channel $channelId")
+        } catch (e: Exception) {
+            log.warn("Failed to send interrupt to channel $channelId stdin, force-killing: ${e.message}")
+            channel.process.destroyForcibly()
         }
     }
 
