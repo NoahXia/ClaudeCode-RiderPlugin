@@ -5,7 +5,14 @@ import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.event.SelectionEvent
+import com.intellij.openapi.editor.event.SelectionListener
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.JBColor
@@ -27,6 +34,8 @@ class ClaudeBrowserManager(
 
     private val log = Logger.getInstance(ClaudeBrowserManager::class.java)
 
+    @Volatile private var lastSelectionSentMs = 0L
+
     private val browser: JBCefBrowser = JBCefBrowserBuilder()
         .setOffScreenRendering(false)
         .build()
@@ -41,6 +50,7 @@ class ClaudeBrowserManager(
         setupConsoleHandler()
         setupLoadHandler()
         setupThemeListener()
+        setupEditorContextListener()
         loadWebview()
     }
 
@@ -109,6 +119,62 @@ class ClaudeBrowserManager(
             .subscribe(LafManagerListener.TOPIC, LafManagerListener {
                 loadWebview()
             })
+    }
+
+    /** Push the active file (and selection if any) to the webview whenever the user
+     *  switches tabs or changes the selection, so Claude always knows the current file. */
+    private fun setupEditorContextListener() {
+        // Tab switch: different file becomes active
+        project.messageBus.connect(this)
+            .subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER,
+                object : FileEditorManagerListener {
+                    override fun selectionChanged(event: FileEditorManagerEvent) {
+                        sendCurrentFileContext()
+                    }
+                })
+
+        // Selection change within the active editor (throttled to 150 ms)
+        EditorFactory.getInstance().eventMulticaster.addSelectionListener(
+            object : SelectionListener {
+                override fun selectionChanged(e: SelectionEvent) {
+                    val activeEditor = FileEditorManager.getInstance(project).selectedTextEditor
+                    if (e.editor == activeEditor) sendCurrentFileContext()
+                }
+            },
+            this
+        )
+    }
+
+    private fun sendCurrentFileContext() {
+        val now = System.currentTimeMillis()
+        if (now - lastSelectionSentMs < 150) return
+        lastSelectionSentMs = now
+
+        ApplicationManager.getApplication().runReadAction {
+            val fem    = FileEditorManager.getInstance(project)
+            val vFile  = fem.selectedFiles.firstOrNull() ?: return@runReadAction
+            val editor = fem.selectedTextEditor
+            val filePath     = vFile.path
+            val selectedText = editor?.selectionModel?.selectedText ?: ""
+            val startLine    = editor?.selectionModel?.selectionStartPosition?.line ?: 0
+            val endLine      = editor?.selectionModel?.selectionEndPosition?.line ?: 0
+            val languageId   = FileTypeManager.getInstance()
+                .getFileTypeByFile(vFile).name.lowercase()
+            notifySelectionChanged(filePath, selectedText, startLine, endLine, languageId)
+        }
+    }
+
+    /** Sends a selection_changed message so the webview keeps currentSelection up to date. */
+    fun notifySelectionChanged(
+        filePath: String, selectedText: String,
+        startLine: Int, endLine: Int, languageId: String
+    ) {
+        fun String.jsonEscape() = "\"" + replace("\\", "\\\\")
+            .replace("\"", "\\\"").replace("\n", "\\n")
+            .replace("\r", "\\r").replace("\t", "\\t") + "\""
+
+        val inner = """{"type":"request","channelId":"","requestId":"","request":{"type":"selection_changed","selection":{"filePath":${filePath.jsonEscape()},"selectedText":${selectedText.jsonEscape()},"startLine":$startLine,"endLine":$endLine,"languageId":${languageId.jsonEscape()}}}}"""
+        sendToWebview(inner)
     }
 
     fun loadWebview() {
