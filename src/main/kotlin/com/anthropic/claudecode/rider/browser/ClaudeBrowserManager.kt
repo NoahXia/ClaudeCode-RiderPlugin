@@ -204,6 +204,26 @@ class ClaudeBrowserManager(
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
 
+    /**
+     * Inserts [text] into the active session's input box via the webview's
+     * `insert_at_mention` request type.  Used by editor context-menu actions.
+     */
+    fun insertAtMention(text: String) {
+        val escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        val script = """
+            window.__fromExtension({
+                type: 'from-extension',
+                message: {
+                    type: 'request',
+                    channelId: '',
+                    requestId: '',
+                    request: { type: 'insert_at_mention', text: `$escaped` }
+                }
+            });
+        """.trimIndent()
+        browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
+    }
+
     override fun dispose() {
         Disposer.dispose(browser)
     }

@@ -99,6 +99,16 @@
             description="Start a new conversation in Claude Code">
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift ESCAPE"/>
         </action>
+
+        <!-- Right-click editor submenu: Ask / Explain / Fix with Claude -->
+        <group
+            id="ClaudeCode.EditorGroup"
+            class="com.anthropic.claudecode.rider.actions.ClaudeEditorActionGroup"
+            text="Claude"
+            description="Send selected code to Claude Code"
+            popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </group>
     </actions>
 
 </idea-plugin>
