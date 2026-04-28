@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.2"
+version = "1.0.6"
 
 kotlin {
     jvmToolchain(17)
@@ -49,6 +49,8 @@ intellijPlatform {
             .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
         changeNotes = """
             <ul>
+                <li>Fix: Tool permission dialog (Allow/Deny) now renders correctly — webview <code>isVisible</code> is now set to true on load, which the React app requires to show the interactive permission UI</li>
+                <li>Fix: Write/Edit tool permission dialog no longer causes silent failure — strip large file content from <code>tool_permission_request</code> inputs to prevent JCEF script-size overflow</li>
                 <li>Fix: Bash/tool call blocks now display correctly — added <code>--include-partial-messages</code> so Claude streams incremental events the webview needs to render tool use in real time</li>
                 <li>Fix: <code>sendToWebview</code> now uses base64 encoding to safely transmit any JSON (previously backtick template literals could break on <code>${'$'}{...}</code> patterns in tool output)</li>
                 <li>Fix: <code>--permission-mode</code> is now forwarded to the Claude CLI from the webview setting</li>

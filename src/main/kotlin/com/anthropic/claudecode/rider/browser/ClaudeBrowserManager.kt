@@ -98,9 +98,10 @@ class ClaudeBrowserManager(
             override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
                 if (frame?.isMain == true) {
                     log.info("Claude webview loaded (status $httpStatusCode)")
-                    // Push the current file context once the webview is ready so Claude
-                    // immediately knows which file is open even before the user switches tabs.
                     ApplicationManager.getApplication().invokeLater {
+                        // Tell the webview it is visible — gates the permission dialog and
+                        // insert_at_mention.  Must be sent before any permission request arrives.
+                        notifyVisibility(true)
                         sendCurrentFileContext()
                     }
                 }

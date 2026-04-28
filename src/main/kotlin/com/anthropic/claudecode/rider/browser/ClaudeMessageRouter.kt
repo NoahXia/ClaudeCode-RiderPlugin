@@ -50,28 +50,31 @@ class ClaudeMessageRouter(
     ): Boolean {
         if (request == null) return false
 
-        try {
-            val json = Json.parseToJsonElement(request).jsonObject
-            val type = json["type"]?.jsonPrimitive?.content ?: ""
+        // onQuery fires on the CEF I/O thread. All IntelliJ platform APIs
+        // (project services, VFS, tool windows) must run on the EDT, so we
+        // dispatch the entire message body there and call callback on EDT too.
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val json = Json.parseToJsonElement(request).jsonObject
+                val type = json["type"]?.jsonPrimitive?.content ?: ""
 
-            when (type) {
-                "request"         -> handleRpcRequest(json)
-                "launch_claude"   -> handleLaunchClaude(json)
-                "io_message"      -> handleIoMessage(json)
-                "close_channel"   -> handleCloseChannel(json)
-                "interrupt_claude"-> handleInterruptClaude(json)
-                "retry_load"      -> { ApplicationManager.getApplication().invokeLater { browserManager.loadWebview() } }
-                // Webview response to a tool_permission_request we sent earlier
-                "response"        -> handleWebviewResponse(json)
-                // Webview cancelled an outstanding request (e.g. user dismissed permission dialog)
-                "cancel_request"  -> handleCancelRequest(json)
-                else              -> log.debug("Unhandled top-level message type: $type")
+                when (type) {
+                    "request"         -> handleRpcRequest(json)
+                    "launch_claude"   -> handleLaunchClaude(json)
+                    "io_message"      -> handleIoMessage(json)
+                    "close_channel"   -> handleCloseChannel(json)
+                    "interrupt_claude"-> handleInterruptClaude(json)
+                    "retry_load"      -> browserManager.loadWebview()
+                    "response"        -> handleWebviewResponse(json)
+                    "cancel_request"  -> handleCancelRequest(json)
+                    else              -> log.debug("Unhandled top-level message type: $type")
+                }
+
+                callback?.success("")
+            } catch (e: Exception) {
+                log.warn("Error processing message from webview: ${e.message}", e)
+                callback?.failure(500, e.message ?: "Internal error")
             }
-
-            callback?.success("")
-        } catch (e: Exception) {
-            log.warn("Error processing message from webview: ${e.message}", e)
-            callback?.failure(500, e.message ?: "Internal error")
         }
 
         return true
@@ -124,6 +127,7 @@ class ClaudeMessageRouter(
             "update_session_state"    -> sendResponse(requestId, buildJsonObject { put("type", "update_session_state_response") })
             "delete_session"          -> handleDeleteSession(requestId, req)
             "rename_session"          -> handleRenameSession(requestId, req)
+            "open_diff"               -> handleOpenDiff(requestId, req)
             "fork_conversation"       -> sendResponse(requestId, buildJsonObject { put("type", "fork_conversation_response") })
             "message_rated"           -> sendResponse(requestId, buildJsonObject { put("type", "message_rated_response") })
             "set_permission_mode"     -> handleSetPermissionMode(requestId, req)
@@ -546,6 +550,16 @@ class ClaudeMessageRouter(
         }
     }
 
+    private fun handleOpenDiff(requestId: String, req: JsonObject) {
+        // The webview sends open_diff for Edit/Write tool permissions.
+        // Returning the edits unchanged signals "user accepted the diff" and allows the tool.
+        // Returning null would trigger $.reject("User cancelled") and deny the tool.
+        sendResponse(requestId, buildJsonObject {
+            put("type", "open_diff_response")
+            put("newEdits", req["edits"] ?: JsonNull)
+        })
+    }
+
     private fun handleOpenFile(requestId: String, req: JsonObject) {
         val filePath = req["filePath"]?.jsonPrimitive?.contentOrNull ?: run {
             sendResponse(requestId, buildJsonObject { put("type", "open_file_response") }); return
@@ -682,7 +696,11 @@ class ClaudeMessageRouter(
     // u2500u2500 settings u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
 
     private fun handleSetPermissionMode(requestId: String, req: JsonObject) {
-        val mode = req["permissionMode"]?.jsonPrimitive?.contentOrNull ?: return
+        // webview sends {type:"set_permission_mode", mode:"acceptEdits", ...}
+        val mode = req["mode"]?.jsonPrimitive?.contentOrNull
+            ?: req["permissionMode"]?.jsonPrimitive?.contentOrNull
+            ?: return
+        log.info("set_permission_mode: $mode")
         ClaudeSettings.getInstance().initialPermissionMode = mode
         sendResponse(requestId, buildJsonObject { put("type", "set_permission_mode_response"); put("success", true) })
     }

@@ -78,12 +78,16 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             "--output-format", "stream-json",
             "--verbose",
             "--input-format", "stream-json",
-            "--permission-prompt-tool", "stdio",
             "--include-partial-messages"
         )
+        // Only use stdio permission prompt when we need interactive permission bridging.
+        // acceptEdits / bypassPermissions handle permissions internally in the CLI itself.
+        val needsPermissionBridge = permissionMode !in setOf("acceptEdits", "bypassPermissions")
+        if (needsPermissionBridge) args += listOf("--permission-prompt-tool", "stdio")
         if (!resume.isNullOrBlank()) args += listOf("--resume", resume)
         if (permissionMode.isNotBlank() && permissionMode != "default")
             args += listOf("--permission-mode", permissionMode)
+        log.info("Claude channel $channelId args: ${args.drop(1).joinToString(" ")}")
 
         try {
             val pb = ProcessBuilder(args)
@@ -154,6 +158,8 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             return
         }
         try {
+            val msgType = runCatching { Json.parseToJsonElement(messageJson).jsonObject["type"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+            log.info("sendIoMessage: channel=$channelId type=$msgType done=$done len=${messageJson.length}")
             val line = messageJson + "\n"
             channel.process.outputStream.write(line.toByteArray(Charsets.UTF_8))
             channel.process.outputStream.flush()
@@ -195,9 +201,21 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
     private fun forwardIoMessage(channelId: String, line: String) {
         val parsedMessage = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: return
 
-        // Intercept control_request from Claude and bridge to the webview's
-        // tool_permission_request RPC (mirroring what the VS Code SDK does internally).
-        if (parsedMessage["type"]?.jsonPrimitive?.contentOrNull == "control_request") {
+        val msgType = parsedMessage["type"]?.jsonPrimitive?.contentOrNull
+        log.info("[channel/$channelId] msg type=$msgType")
+
+        // Log detail for result/error messages to diagnose tool failures
+        if (msgType == "result" || msgType == "tool_result") {
+            log.info("[channel/$channelId] $msgType detail: ${parsedMessage.toString().take(800)}")
+        }
+        if (parsedMessage["is_error"]?.jsonPrimitive?.booleanOrNull == true) {
+            log.warn("[channel/$channelId] error message: ${parsedMessage.toString().take(800)}")
+        }
+
+        if (msgType == "control_request") {
+            val subtype = parsedMessage["request"]?.jsonObject?.get("subtype")?.jsonPrimitive?.contentOrNull
+            val toolName = parsedMessage["request"]?.jsonObject?.get("tool_name")?.jsonPrimitive?.contentOrNull
+            log.info("[channel/$channelId] control_request subtype=$subtype tool=$toolName")
             bridgeControlRequest(channelId, parsedMessage)
             return
         }
@@ -236,9 +254,23 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             return
         }
 
+        val toolName = request["tool_name"]?.jsonPrimitive?.contentOrNull ?: ""
+
+        // For file-writing tools, the webview's Ne1 handler calls openDiff() which
+        // requires a VS Code diff editor that Rider doesn't have. If it gets no diff
+        // result it auto-rejects. Large file content also overflows JCEF's script limit.
+        // Solution: auto-allow these tools here in Kotlin, bypassing the webview entirely.
+        // The permission_mode setting already controls the overall trust level.
+        if (toolName in setOf("Write", "Edit", "MultiEdit", "NotebookEdit")) {
+            log.info("[channel/$channelId] auto-allowing $toolName (control_request_id=$controlRequestId)")
+            writeControlResponse(channelId, controlRequestId,
+                buildJsonObject { put("behavior", "allow") })
+            return
+        }
+
+        log.info("[channel/$channelId] bridging $toolName permission to webview")
+
         val webviewRequestId = java.util.UUID.randomUUID().toString()
-        pendingPermissions[webviewRequestId] = Pair(channelId, controlRequestId)
-        log.debug("Bridging can_use_tool control_request $controlRequestId → webview requestId $webviewRequestId")
 
         val requestToWebview = buildJsonObject {
             put("type", "request")
@@ -246,7 +278,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             put("requestId", webviewRequestId)
             put("request", buildJsonObject {
                 put("type", "tool_permission_request")
-                put("toolName", request["tool_name"] ?: JsonPrimitive(""))
+                put("toolName", JsonPrimitive(toolName))
                 put("inputs", request["input"] ?: JsonNull)
                 put("suggestions", request["permission_suggestions"] ?: JsonNull)
                 put("toolUseId", request["tool_use_id"] ?: JsonPrimitive(""))
@@ -298,7 +330,7 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             val line = msg.toString() + "\n"
             channel.process.outputStream.write(line.toByteArray(Charsets.UTF_8))
             channel.process.outputStream.flush()
-            log.debug("Wrote control_response for request_id=$controlRequestId behavior=${result["behavior"]}")
+            log.info("writeControlResponse: channel=$channelId request_id=$controlRequestId behavior=${result["behavior"]}")
         } catch (e: Exception) {
             log.warn("Failed to write control_response for $controlRequestId: ${e.message}")
         }
