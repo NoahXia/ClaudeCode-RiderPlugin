@@ -310,6 +310,12 @@ class ClaudeMessageRouter(
         }
     }
 
+    // Matches XML-like system context blocks injected by the IDE extension, e.g.:
+    //   <ide_opened_file>...</ide_opened_file>
+    //   <local-command-caveat>...</local-command-caveat>
+    // [\\s\\S]*? matches any character including newlines (non-greedy).
+    private val systemTagRegex = Regex("<[a-zA-Z_][a-zA-Z_0-9-]*>[\\s\\S]*?</[a-zA-Z_][a-zA-Z_0-9-]*>")
+
     private fun readSessionSummary(path: java.nio.file.Path): String {
         return try {
             var summaryTitle: String? = null
@@ -323,21 +329,15 @@ class ClaudeMessageRouter(
                         summaryTitle = json["summary"]?.jsonPrimitive?.contentOrNull
                         continue
                     }
-                    // fall back to first user message content
+                    // fall back to first user message that contains actual user-typed text
                     if (firstUserContent == null) {
                         val role = json["role"]?.jsonPrimitive?.contentOrNull
                             ?: json["message"]?.jsonObject?.get("role")?.jsonPrimitive?.contentOrNull
                         if (role == "user") {
-                            val content = json["content"]?.jsonPrimitive?.contentOrNull
-                                ?: json["message"]?.jsonObject?.get("content")?.let {
-                                    when {
-                                        it is JsonPrimitive -> it.contentOrNull
-                                        it is JsonArray -> it.firstOrNull()
-                                            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-                                        else -> null
-                                    }
-                                }
-                            if (!content.isNullOrBlank()) firstUserContent = content.take(80)
+                            val contentEl = json["content"]
+                                ?: json["message"]?.jsonObject?.get("content")
+                            val text = extractUserText(contentEl)
+                            if (!text.isNullOrBlank()) firstUserContent = text.take(80)
                         }
                     }
                 }
@@ -346,6 +346,26 @@ class ClaudeMessageRouter(
         } catch (e: Exception) {
             "Session"
         }
+    }
+
+    /**
+     * Extracts the actual user-typed text from a message content element.
+     * Strips system-injected XML context blocks (<ide_opened_file>, <local-command-caveat>, etc.)
+     * that the IDE extension prepends to user messages before sending to Claude.
+     */
+    private fun extractUserText(content: JsonElement?): String? {
+        val textBlocks: List<String> = when (content) {
+            is JsonPrimitive -> listOf(content.contentOrNull ?: return null)
+            is JsonArray -> content.mapNotNull {
+                runCatching { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+            }
+            else -> return null
+        }
+        for (text in textBlocks) {
+            val stripped = systemTagRegex.replace(text, "").trim()
+            if (stripped.isNotBlank()) return stripped
+        }
+        return null
     }
 
     private fun handleGetSession(requestId: String, req: JsonObject) {
