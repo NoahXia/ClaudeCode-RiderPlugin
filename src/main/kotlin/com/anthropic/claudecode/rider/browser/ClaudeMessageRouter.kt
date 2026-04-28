@@ -254,15 +254,14 @@ class ClaudeMessageRouter(
             val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
             if (!Files.exists(claudeDir)) return emptyList()
 
-            val encoded = cwd.replace("\\", "/").trimEnd('/')
+            // Claude CLI encodes project paths as directory names by replacing every
+            // non-alphanumeric character with a hyphen, e.g.:
+            //   "F:\GitHub\my_project" → "F--GitHub-my-project"
+            val encodedDirName = cwd.replace(Regex("[^A-Za-z0-9]"), "-")
+            log.info("loadSessionsFromDisk: cwd=$cwd encodedDirName=$encodedDirName")
             val projectDir = Files.list(claudeDir).use { stream ->
                 stream.filter { Files.isDirectory(it) }
-                      .filter { dir ->
-                          val name = dir.fileName.toString()
-                          name == encoded || name == encoded.replace("/", "-") ||
-                          name == encoded.replace(":", "") ||
-                          name.endsWith(cwd.substringAfterLast('/').substringAfterLast('\\'))
-                      }
+                      .filter { dir -> dir.fileName.toString() == encodedDirName }
                       .findFirst()
                       .orElse(null)
             }
