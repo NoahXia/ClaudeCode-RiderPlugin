@@ -305,7 +305,10 @@ class ClaudeBrowserManager(
     fun sendToWebview(innerJson: String) {
         val base64 = java.util.Base64.getEncoder()
             .encodeToString(innerJson.toByteArray(Charsets.UTF_8))
-        val script = "window.__fromExtension({type:'from-extension',message:JSON.parse(atob('$base64'))})"
+        // atob() decodes base64 to a binary string (one char per byte, not Unicode).
+        // For multi-byte UTF-8 characters (e.g. CJK) we must re-decode the byte
+        // values through TextDecoder so JSON.parse receives a proper Unicode string.
+        val script = "window.__fromExtension({type:'from-extension',message:JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob('$base64'),function(c){return c.charCodeAt(0)})))})"
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
     }
 

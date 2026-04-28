@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.7"
+version = "1.0.8"
 
 kotlin {
     jvmToolchain(17)
@@ -49,6 +49,7 @@ intellijPlatform {
             .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
         changeNotes = """
             <ul>
+                <li>Fix: Chinese (CJK) text no longer appears as garbled characters in session list and session messages — <code>atob()</code> returns a binary string, not Unicode; added <code>TextDecoder('utf-8')</code> to correctly decode multi-byte UTF-8 before JSON.parse</li>
                 <li>Fix: session list now correctly finds sessions for projects with paths containing backslashes, colons, or underscores (e.g. <code>F:\GitHub\my_project</code>) — matches the Claude CLI's encoding rule of replacing every non-alphanumeric character with a hyphen</li>
                 <li>Fix: Tool permission dialog (Allow/Deny) now renders correctly — webview <code>isVisible</code> is now set to true on load, which the React app requires to show the interactive permission UI</li>
                 <li>Fix: Write/Edit tool permission dialog no longer causes silent failure — strip large file content from <code>tool_permission_request</code> inputs to prevent JCEF script-size overflow</li>
