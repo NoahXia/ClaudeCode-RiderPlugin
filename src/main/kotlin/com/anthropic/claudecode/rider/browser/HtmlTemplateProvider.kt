@@ -283,9 +283,11 @@ object HtmlTemplateProvider {
         }
 
         /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
+        /* Note: do NOT set scrollbar-width on * — in Chromium 121+, any non-auto
+           scrollbar-width causes ::-webkit-scrollbar pseudo-elements to be ignored,
+           and scrollbar-color:…transparent makes the fallback scrollbar invisible. */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-webkit-scrollbar-corner { background: transparent; }
         ::-webkit-scrollbar-corner { background: transparent; }
         ::-webkit-scrollbar-thumb {
             background: var(--vscode-scrollbarSlider-background, #79797966);
@@ -297,8 +299,6 @@ object HtmlTemplateProvider {
         ::-webkit-scrollbar-thumb:active {
             background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
         }
-        /* scrollbar-gutter so content doesn't shift when scrollbar appears */
-        * { scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background, #79797966) transparent; }
     </style>
 </head>
 <body>
