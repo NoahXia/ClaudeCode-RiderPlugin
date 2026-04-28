@@ -282,23 +282,26 @@ object HtmlTemplateProvider {
             padding: 0 !important;
         }
 
-        /* ── Thin overlay scrollbars (WebKit/Chromium) ── */
-        /* Note: do NOT set scrollbar-width on * — in Chromium 121+, any non-auto
-           scrollbar-width causes ::-webkit-scrollbar pseudo-elements to be ignored,
-           and scrollbar-color:…transparent makes the fallback scrollbar invisible. */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        /* ── Scrollbars ── */
+        /* index.css sets ::-webkit-scrollbar { display:none } to hide all native scrollbars.
+           We must override display:block to reveal them, then style them.
+           Note: do NOT set scrollbar-width on * — in Chromium 121+, any non-auto
+           scrollbar-width causes ::-webkit-scrollbar pseudo-elements to be ignored. */
+        ::-webkit-scrollbar { display: block; width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-corner { background: transparent; }
         ::-webkit-scrollbar-thumb {
-            background: var(--vscode-scrollbarSlider-background, #79797966);
+            background: rgba(180, 180, 180, 0.4);
             border-radius: 3px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--vscode-scrollbarSlider-hoverBackground, #646464b3);
+            background: rgba(180, 180, 180, 0.65);
         }
         ::-webkit-scrollbar-thumb:active {
-            background: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66);
+            background: rgba(180, 180, 180, 0.8);
         }
+        /* Sessions list: ensure flex item has a bounded height so overflow-y:auto triggers */
+        [class*="content_OOQiHg"] { min-height: 0; }
     </style>
 </head>
 <body>
