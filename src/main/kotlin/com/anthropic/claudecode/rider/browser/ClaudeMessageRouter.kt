@@ -274,7 +274,7 @@ class ClaudeMessageRouter(
                       .sorted { a, b ->
                           Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a))
                       }
-                      .limit(50)
+                      .limit(10)
                       .map { file ->
                           val sessionId = file.fileName.toString().removeSuffix(".jsonl")
                           val lastMod = Files.getLastModifiedTime(file).toMillis()
