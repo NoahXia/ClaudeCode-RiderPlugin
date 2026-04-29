@@ -560,11 +560,13 @@ class ClaudeMessageRouter(
             } ?: ""
             sendResponse(requestId, buildJsonObject {
                 put("type", "get_current_selection_response")
-                put("selectedText", selection)
-                put("filePath", filePath)
-                put("startLine", startLine)
-                put("endLine", endLine)
-                put("languageId", languageId)
+                put("selection", buildJsonObject {
+                    put("filePath", filePath)
+                    put("selectedText", selection)
+                    put("startLine", startLine)
+                    put("endLine", endLine)
+                    put("languageId", languageId)
+                })
             })
         }
     }
