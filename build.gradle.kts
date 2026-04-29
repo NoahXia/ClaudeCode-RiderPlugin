@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.14"
+version = "1.0.15"
 
 kotlin {
     jvmToolchain(17)
@@ -49,6 +49,8 @@ intellijPlatform {
             .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
         changeNotes = """
             <ul>
+                <li>Fix: current open file now automatically injected into chat context on first plugin load — <code>handleInit</code> now bypasses the 150ms throttle so React receives <code>selection_changed</code> as soon as it is ready, instead of waiting for the user to switch tabs</li>
+                <li>Fix: link text color and style improved for readability — <code>#4fc3f7</code> with underline override to prevent React inline styles from winning the CSS cascade</li>
                 <li>Fix: clicking links in chat now opens the system default browser instead of spawning a new embedded Chromium (cef_server.exe) process — intercept <code>onBeforePopup</code> in the JCEF life-span handler and delegate to <code>Desktop.browse()</code></li>
                 <li>Fix: Write/Edit/Read/Glob tools now pre-approved via <code>--allowedTools</code> — Claude 2.1.x checks allowedTools before sending control_request, so without this flag Write was silently denied before our auto-allow code could run</li>
                 <li>Fix: Bash tool permission dialog now works — <code>pendingPermissions</code> map was never populated, so webview responses were discarded and Claude never received the control_response</li>
