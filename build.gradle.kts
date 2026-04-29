@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.anthropic.claudecode"
-version = "1.0.13"
+version = "1.0.14"
 
 kotlin {
     jvmToolchain(17)
@@ -49,6 +49,7 @@ intellijPlatform {
             .substringAfter("<description><![CDATA[").substringBefore("]]></description>").trimIndent() }
         changeNotes = """
             <ul>
+                <li>Fix: clicking links in chat now opens the system default browser instead of spawning a new embedded Chromium (cef_server.exe) process — intercept <code>onBeforePopup</code> in the JCEF life-span handler and delegate to <code>Desktop.browse()</code></li>
                 <li>Fix: Write/Edit/Read/Glob tools now pre-approved via <code>--allowedTools</code> — Claude 2.1.x checks allowedTools before sending control_request, so without this flag Write was silently denied before our auto-allow code could run</li>
                 <li>Fix: Bash tool permission dialog now works — <code>pendingPermissions</code> map was never populated, so webview responses were discarded and Claude never received the control_response</li>
                 <li>Fix: "Web" sessions tab hidden in session list — remote sessions are not supported in Rider</li>

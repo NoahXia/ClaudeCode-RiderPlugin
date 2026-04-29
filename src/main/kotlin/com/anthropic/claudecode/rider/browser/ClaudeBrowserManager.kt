@@ -22,10 +22,13 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.browser.CefMessageRouter
 import org.cef.handler.CefDisplayHandler
+import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.Color
 import java.awt.Component
+import java.awt.Desktop
+import java.net.URI
 
 class ClaudeBrowserManager(
     private val project: Project,
@@ -49,6 +52,7 @@ class ClaudeBrowserManager(
         setupRouter()
         setupConsoleHandler()
         setupLoadHandler()
+        setupExternalLinkHandler()
         setupThemeListener()
         setupEditorContextListener()
         loadWebview()
@@ -88,6 +92,30 @@ class ClaudeBrowserManager(
                     else -> "INFO"
                 }
                 log.info("[JS $tag] $message (source: $source:$line)")
+                return false
+            }
+        }, browser.cefBrowser)
+    }
+
+    /** Redirect all popup navigations (window.open, target=_blank links) to the system browser.
+     *  Without this, JCEF spawns a new cef_server.exe Chromium process for every link click. */
+    private fun setupExternalLinkHandler() {
+        browser.jbCefClient.addLifeSpanHandler(object : CefLifeSpanHandlerAdapter() {
+            override fun onBeforePopup(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                targetUrl: String?,
+                targetFrameName: String?
+            ): Boolean {
+                if (targetUrl != null &&
+                    (targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) {
+                    try {
+                        if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(targetUrl))
+                    } catch (e: Exception) {
+                        log.warn("Failed to open URL in system browser: $targetUrl", e)
+                    }
+                    return true // block the JCEF popup window
+                }
                 return false
             }
         }, browser.cefBrowser)
