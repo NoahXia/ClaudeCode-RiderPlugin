@@ -201,6 +201,36 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * Sends a control_request to the running CLI process, mirroring the SDK's
+     * QueryClient.request() method.  Used for set_model, set_permission_mode,
+     * apply_flag_settings, set_max_thinking_tokens etc.
+     */
+    fun sendControlRequest(channelId: String, subtype: String, extra: JsonObject = JsonObject(emptyMap())) {
+        val channel = channels[channelId] ?: run {
+            log.warn("sendControlRequest: channel $channelId not found")
+            return
+        }
+        try {
+            val requestId = java.util.UUID.randomUUID().toString()
+            val request = buildJsonObject {
+                put("subtype", subtype)
+                extra.forEach { (k, v) -> put(k, v) }
+            }
+            val msg = buildJsonObject {
+                put("type", "control_request")
+                put("request_id", requestId)
+                put("request", request)
+            }
+            val line = msg.toString() + "\n"
+            channel.process.outputStream.write(line.toByteArray(Charsets.UTF_8))
+            channel.process.outputStream.flush()
+            log.info("sendControlRequest: channel=$channelId subtype=$subtype")
+        } catch (e: Exception) {
+            log.warn("Failed to send control_request ($subtype) to channel $channelId: ${e.message}")
+        }
+    }
+
     // ── Webview forwarding ────────────────────────────────────────────────────
 
     private fun forwardIoMessage(channelId: String, line: String) {

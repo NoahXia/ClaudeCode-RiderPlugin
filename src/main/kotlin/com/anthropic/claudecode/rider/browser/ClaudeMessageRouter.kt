@@ -84,6 +84,7 @@ class ClaudeMessageRouter(
 
     private fun handleRpcRequest(envelope: JsonObject) {
         val requestId = envelope["requestId"]?.jsonPrimitive?.content ?: ""
+        val channelId = envelope["channelId"]?.jsonPrimitive?.contentOrNull ?: ""
         val req       = envelope["request"]?.jsonObject ?: return
         val reqType   = req["type"]?.jsonPrimitive?.content ?: ""
 
@@ -130,9 +131,9 @@ class ClaudeMessageRouter(
             "open_diff"               -> handleOpenDiff(requestId, req)
             "fork_conversation"       -> sendResponse(requestId, buildJsonObject { put("type", "fork_conversation_response") })
             "message_rated"           -> sendResponse(requestId, buildJsonObject { put("type", "message_rated_response") })
-            "set_permission_mode"     -> handleSetPermissionMode(requestId, req)
-            "set_model"               -> handleSetModel(requestId, req)
-            "set_thinking_level"      -> handleSetThinkingLevel(requestId, req)
+            "set_permission_mode"     -> handleSetPermissionMode(requestId, channelId, req)
+            "set_model"               -> handleSetModel(requestId, channelId, req)
+            "set_thinking_level"      -> handleSetThinkingLevel(requestId, channelId, req)
             "apply_settings"          -> sendResponse(requestId, buildJsonObject { put("type", "apply_settings_response") })
             "get_asset_uris"          -> sendResponse(requestId, buildJsonObject { put("type", "asset_uris_response"); put("uris", buildJsonObject {}) })
             "request_usage_update"    -> sendResponse(requestId, buildJsonObject { put("type", "request_usage_update_response") })
@@ -716,26 +717,82 @@ class ClaudeMessageRouter(
 
     // u2500u2500 settings u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500u2500
 
-    private fun handleSetPermissionMode(requestId: String, req: JsonObject) {
-        // webview sends {type:"set_permission_mode", mode:"acceptEdits", ...}
+    private fun handleSetPermissionMode(requestId: String, channelId: String, req: JsonObject) {
         val mode = req["mode"]?.jsonPrimitive?.contentOrNull
             ?: req["permissionMode"]?.jsonPrimitive?.contentOrNull
             ?: return
         log.info("set_permission_mode: $mode")
         ClaudeSettings.getInstance().initialPermissionMode = mode
+        if (channelId.isNotEmpty()) {
+            ClaudeProcessManager.getInstance(project)
+                .sendControlRequest(channelId, "set_permission_mode", buildJsonObject { put("mode", mode) })
+        }
         sendResponse(requestId, buildJsonObject { put("type", "set_permission_mode_response"); put("success", true) })
     }
 
-    private fun handleSetModel(requestId: String, req: JsonObject) {
-        val model = req["model"]?.jsonPrimitive?.contentOrNull ?: return
-        ClaudeSettings.getInstance().model = model
+    private fun handleSetModel(requestId: String, channelId: String, req: JsonObject) {
+        // webview sends model as object {value: "claude-sonnet-4-6", label: "..."} or string
+        val modelValue = req["model"]?.let { el ->
+            when (el) {
+                is JsonPrimitive -> el.contentOrNull
+                is JsonObject -> el["value"]?.jsonPrimitive?.contentOrNull
+                else -> null
+            }
+        } ?: return
+        log.info("set_model: $modelValue")
+        ClaudeSettings.getInstance().model = modelValue
+        val settingsValue = if (modelValue == "default") null else modelValue
+        writeUserSetting("model", settingsValue)
+        if (channelId.isNotEmpty()) {
+            ClaudeProcessManager.getInstance(project)
+                .sendControlRequest(channelId, "apply_flag_settings", buildJsonObject {
+                    put("settings", buildJsonObject {
+                        if (settingsValue != null) put("model", settingsValue) else put("model", JsonNull)
+                    })
+                })
+        }
         sendResponse(requestId, buildJsonObject { put("type", "set_model_response") })
     }
 
-    private fun handleSetThinkingLevel(requestId: String, req: JsonObject) {
+    private fun handleSetThinkingLevel(requestId: String, channelId: String, req: JsonObject) {
         val level = req["thinkingLevel"]?.jsonPrimitive?.contentOrNull ?: return
+        log.info("set_thinking_level: $level")
         ClaudeSettings.getInstance().thinkingLevel = level
+        if (channelId.isNotEmpty()) {
+            val maxTokens = when (level) {
+                "high" -> 32000
+                "medium" -> 10000
+                "low" -> 4000
+                else -> 0
+            }
+            ClaudeProcessManager.getInstance(project)
+                .sendControlRequest(channelId, "set_max_thinking_tokens", buildJsonObject {
+                    put("max_thinking_tokens", maxTokens)
+                })
+        }
         sendResponse(requestId, buildJsonObject { put("type", "set_thinking_level_response") })
+    }
+
+    private fun writeUserSetting(key: String, value: String?) {
+        try {
+            val claudeDir = java.nio.file.Paths.get(System.getProperty("user.home"), ".claude")
+            Files.createDirectories(claudeDir)
+            val settingsFile = claudeDir.resolve("settings.json")
+            val existing = if (Files.exists(settingsFile)) {
+                runCatching { Json.parseToJsonElement(Files.readString(settingsFile)).jsonObject }.getOrNull()
+                    ?: buildJsonObject {}
+            } else {
+                buildJsonObject {}
+            }
+            val updated = buildJsonObject {
+                existing.forEach { (k, v) -> if (k != key) put(k, v) }
+                if (value != null) put(key, value) else { /* delete key by not including it */ }
+            }
+            Files.writeString(settingsFile, Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), updated) + "\n")
+            log.info("Wrote $key=${value ?: "null"} to ${settingsFile}")
+        } catch (e: Exception) {
+            log.warn("Failed to write user setting $key: ${e.message}")
+        }
     }
 
     private fun handleCheckGitStatus(requestId: String, req: JsonObject) {
