@@ -80,6 +80,11 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             "--input-format", "stream-json",
             "--include-partial-messages"
         )
+        // Pre-approve read/write tools so Claude never blocks on them — these are safe to
+        // auto-allow and Claude 2.1.x checks --allowedTools before sending control_request.
+        // Bash and other interactive tools still go through the webview permission dialog.
+        args += listOf("--allowedTools",
+            "Write,Edit,MultiEdit,NotebookEdit,Read,Glob,LS,Grep")
         // Only use stdio permission prompt when we need interactive permission bridging.
         // acceptEdits / bypassPermissions handle permissions internally in the CLI itself.
         val needsPermissionBridge = permissionMode !in setOf("acceptEdits", "bypassPermissions")
@@ -271,6 +276,9 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         log.info("[channel/$channelId] bridging $toolName permission to webview")
 
         val webviewRequestId = java.util.UUID.randomUUID().toString()
+
+        // Register BEFORE sending — webview can reply on EDT before sendToWebview returns.
+        pendingPermissions[webviewRequestId] = Pair(channelId, controlRequestId)
 
         val requestToWebview = buildJsonObject {
             put("type", "request")

@@ -368,6 +368,12 @@ object HtmlTemplateProvider {
         var HIDDEN_SECTIONS = ['Settings', 'Slash Commands'];
 
         function applyHides() {
+            // Hide the "Web" tab in the session list — remote sessions are not supported.
+            // The segmented control renders buttons directly inside [class*="segmented_"].
+            document.querySelectorAll('[class*="segmented_"] button').forEach(function (btn) {
+                if (btn.textContent.trim() === 'Web') btn.style.display = 'none';
+            });
+
             // Hide specific command items
             document.querySelectorAll('[class*="commandLabel"]').forEach(function (el) {
                 var text = el.textContent.trim();
