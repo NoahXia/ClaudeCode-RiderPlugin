@@ -166,8 +166,8 @@ object HtmlTemplateProvider {
             --vscode-scrollbarSlider-activeBackground: #bfbfbf66;
 
             /* ── Text links ── */
-            --vscode-textLink-foreground: #4fc3f7;
-            --vscode-textLink-activeForeground: #4fc3f7;
+            --vscode-textLink-foreground: #3794ff;
+            --vscode-textLink-activeForeground: #3794ff;
             --vscode-textCodeBlock-background: #0a0a0a;
 
             /* ── Notifications ── */
@@ -302,19 +302,6 @@ object HtmlTemplateProvider {
         }
         /* Sessions list: ensure flex item has a bounded height so overflow-y:auto triggers */
         [class*="content_OOQiHg"] { min-height: 0; }
-
-        /* ── Links ── */
-        /* The webview bundle renders links with low-contrast styles on dark themes.
-           Force the IDE-resolved CSS variable so links are always clearly readable. */
-        a {
-            color: var(--vscode-textLink-foreground, #4fc3f7) !important;
-            text-decoration: underline;
-            text-underline-offset: 2px;
-        }
-        a:hover {
-            color: var(--vscode-textLink-activeForeground, #4fc3f7) !important;
-            opacity: 0.85;
-        }
     </style>
 </head>
 <body>

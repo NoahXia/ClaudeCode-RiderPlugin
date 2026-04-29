@@ -208,9 +208,9 @@ class ClaudeBrowserManager(
         )
     }
 
-    internal fun sendCurrentFileContext(skipThrottle: Boolean = false) {
+    internal fun sendCurrentFileContext() {
         val now = System.currentTimeMillis()
-        if (!skipThrottle && now - lastSelectionSentMs < 150) return
+        if (now - lastSelectionSentMs < 150) return
         lastSelectionSentMs = now
 
         ApplicationManager.getApplication().runReadAction {

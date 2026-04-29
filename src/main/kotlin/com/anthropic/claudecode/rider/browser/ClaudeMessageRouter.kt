@@ -221,9 +221,7 @@ class ClaudeMessageRouter(
         sendResponse(requestId, response)
 
         // Push the current file context now that the React app is mounted and listening.
-        // Skip throttle: onLoadEnd may have already set lastSelectionSentMs, but at that
-        // point React wasn't ready to receive messages yet. init is the definitive signal.
-        browserManager.sendCurrentFileContext(skipThrottle = true)
+        browserManager.sendCurrentFileContext()
     }
 
     // ── auth status ─────────────────────────────────────────────────────────
