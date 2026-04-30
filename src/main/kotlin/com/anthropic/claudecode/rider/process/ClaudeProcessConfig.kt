@@ -40,15 +40,31 @@ object ClaudeProcessConfig {
             log.warn("Configured Claude path does not exist or is not executable: $configured")
         }
 
-        // 2. System PATH
-        val exeName = if (isWindows) "claude.exe" else "claude"
-        val fromPath = findOnPath(exeName)
-        if (fromPath != null) {
-            log.info("Found Claude on PATH: $fromPath")
-            return fromPath
+        // 2. System PATH — look for native binary first, then npm .cmd shim
+        val candidates = if (isWindows) listOf("claude.exe", "claude.cmd") else listOf("claude")
+        for (exeName in candidates) {
+            val fromPath = findOnPath(exeName)
+            if (fromPath != null) {
+                log.info("Found Claude on PATH: $fromPath")
+                return fromPath
+            }
         }
 
-        // 3. VS Code extension bundled binary (Windows only)
+        // 3. npm global bin directory (may not be on PATH)
+        if (isWindows) {
+            val npmDir = System.getenv("APPDATA")?.let { File(it, "npm") }
+            if (npmDir != null && npmDir.exists()) {
+                for (name in listOf("claude.exe", "claude.cmd")) {
+                    val f = File(npmDir, name)
+                    if (f.exists()) {
+                        log.info("Found Claude in npm global bin: ${f.absolutePath}")
+                        return f.absolutePath
+                    }
+                }
+            }
+        }
+
+        // 4. VS Code extension bundled binary (Windows only)
         if (isWindows) {
             val vscodeBinary = findVsCodeExtensionBinary()
             if (vscodeBinary != null) {

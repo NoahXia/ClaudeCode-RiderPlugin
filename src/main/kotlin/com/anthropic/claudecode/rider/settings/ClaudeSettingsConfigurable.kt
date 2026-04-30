@@ -39,7 +39,9 @@ class ClaudeSettingsConfigurable : BoundConfigurable("Claude Code") {
                         )
                     } else {
                         try {
-                            val proc = ProcessBuilder(path, "--version")
+                            val cmd = if (path.endsWith(".cmd", ignoreCase = true) || path.endsWith(".bat", ignoreCase = true))
+                                listOf("cmd.exe", "/c", path, "--version") else listOf(path, "--version")
+                            val proc = ProcessBuilder(cmd)
                                 .redirectErrorStream(true)
                                 .start()
                             val output = proc.inputStream.bufferedReader().readText().trim()

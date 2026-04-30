@@ -73,8 +73,14 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             return
         }
 
-        val args = mutableListOf(
-            binary,
+        val args = mutableListOf<String>()
+        // .cmd/.bat files on Windows must be invoked via cmd.exe
+        if (binary.endsWith(".cmd", ignoreCase = true) || binary.endsWith(".bat", ignoreCase = true)) {
+            args += listOf("cmd.exe", "/c", binary)
+        } else {
+            args += binary
+        }
+        args += listOf(
             "--output-format", "stream-json",
             "--verbose",
             "--input-format", "stream-json",
