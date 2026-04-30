@@ -681,7 +681,7 @@ class ClaudeMessageRouter(
                 ApplicationManager.getApplication().invokeLater {
                     doListFiles(requestId, req)
                 }
-            }, 150, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }, 1000, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     private fun doListFiles(requestId: String, req: JsonObject) {
