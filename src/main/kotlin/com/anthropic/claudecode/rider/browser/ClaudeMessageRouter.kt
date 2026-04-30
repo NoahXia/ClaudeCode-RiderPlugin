@@ -45,6 +45,8 @@ class ClaudeMessageRouter(
     private val log = Logger.getInstance(ClaudeMessageRouter::class.java)
     private val deletedSessionIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    @Volatile private var listFilesDebounce: java.util.concurrent.ScheduledFuture<*>? = null
+
     override fun onQuery(
         browser: CefBrowser?,
         frame: CefFrame?,
@@ -672,6 +674,17 @@ class ClaudeMessageRouter(
     }
 
     private fun handleListFiles(requestId: String, req: JsonObject) {
+        listFilesDebounce?.cancel(false)
+        listFilesDebounce = com.intellij.util.concurrency.AppExecutorUtil
+            .getAppScheduledExecutorService()
+            .schedule({
+                ApplicationManager.getApplication().invokeLater {
+                    doListFiles(requestId, req)
+                }
+            }, 150, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun doListFiles(requestId: String, req: JsonObject) {
         val pattern = req["pattern"]?.jsonPrimitive?.contentOrNull ?: ""
         val basePath = project.basePath ?: System.getProperty("user.home")
 
