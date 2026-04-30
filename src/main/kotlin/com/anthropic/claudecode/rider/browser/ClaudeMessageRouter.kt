@@ -11,10 +11,14 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
 import kotlinx.serialization.json.*
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -669,43 +673,67 @@ class ClaudeMessageRouter(
 
     private fun handleListFiles(requestId: String, req: JsonObject) {
         val pattern = req["pattern"]?.jsonPrimitive?.contentOrNull ?: ""
-        val cwd = project.basePath ?: System.getProperty("user.home")
-        val root = Paths.get(cwd)
-
-        val ignored = setOf(
-            ".git", ".idea", "build", "out", "node_modules", ".gradle",
-            ".intellijPlatform", "__pycache__", ".DS_Store", "dist", "target"
-        )
+        val basePath = project.basePath ?: System.getProperty("user.home")
 
         val results = mutableListOf<JsonElement>()
         try {
-            Files.walk(root, 8)
-                .filter { path ->
-                    // Skip ignored directories at any level
-                    path.none { part -> part.fileName?.toString() in ignored }
-                }
-                .filter { path ->
-                    if (pattern.isBlank()) true
-                    else {
-                        val rel = root.relativize(path).toString().replace('\\', '/')
-                        val name = path.fileName?.toString() ?: ""
-                        name.contains(pattern, ignoreCase = true) ||
-                        rel.contains(pattern, ignoreCase = true)
+            ApplicationManager.getApplication().runReadAction {
+                val baseDir = LocalFileSystem.getInstance().findFileByPath(basePath) ?: return@runReadAction
+                val fileIndex = ProjectFileIndex.getInstance(project)
+
+                if (pattern.isBlank()) {
+                    fileIndex.iterateContent { vFile ->
+                        if (results.size >= 100) return@iterateContent false
+                        if (vFile.path.contains("/.git/") || vFile.path.contains("\\.git\\")) return@iterateContent true
+                        val rel = VfsUtilCore.getRelativePath(vFile, baseDir) ?: return@iterateContent true
+                        results += buildJsonObject {
+                            put("path", rel.replace('\\', '/'))
+                            put("name", vFile.name)
+                            put("type", if (vFile.isDirectory) "directory" else "file")
+                        }
+                        true
+                    }
+                } else {
+                    val scope = GlobalSearchScope.projectScope(project)
+                    val allNames = FilenameIndex.getAllFilenames(project)
+                    for (name in allNames) {
+                        if (results.size >= 100) break
+                        if (!name.contains(pattern, ignoreCase = true)) continue
+                        val files = FilenameIndex.getVirtualFilesByName(name, scope)
+                        for (vFile in files) {
+                            if (results.size >= 100) break
+                            if (!fileIndex.isInContent(vFile)) continue
+                            if (vFile.path.contains("/.git/") || vFile.path.contains("\\.git\\")) continue
+                            val rel = VfsUtilCore.getRelativePath(vFile, baseDir) ?: continue
+                            results += buildJsonObject {
+                                put("path", rel.replace('\\', '/'))
+                                put("name", name)
+                                put("type", if (vFile.isDirectory) "directory" else "file")
+                            }
+                        }
+                    }
+
+                    // Also match on relative path for files whose name didn't match
+                    if (results.size < 100) {
+                        val matchedPaths = results.mapTo(HashSet()) { it.jsonObject["path"]?.jsonPrimitive?.contentOrNull }
+                        fileIndex.iterateContent { vFile ->
+                            if (results.size >= 100) return@iterateContent false
+                            if (vFile.path.contains("/.git/") || vFile.path.contains("\\.git\\")) return@iterateContent true
+                            val rel = VfsUtilCore.getRelativePath(vFile, baseDir) ?: return@iterateContent true
+                            val relNorm = rel.replace('\\', '/')
+                            if (relNorm in matchedPaths) return@iterateContent true
+                            if (!relNorm.contains(pattern, ignoreCase = true)) return@iterateContent true
+                            results += buildJsonObject {
+                                put("path", relNorm)
+                                put("name", vFile.name)
+                                put("type", if (vFile.isDirectory) "directory" else "file")
+                            }
+                            true
+                        }
                     }
                 }
-                .filter { it != root }
-                .sorted()
-                .limit(100)
-                .forEach { path ->
-                    val rel = root.relativize(path).toString().replace('\\', '/')
-                    val name = path.fileName?.toString() ?: rel
-                    val type = if (Files.isDirectory(path)) "directory" else "file"
-                    results += buildJsonObject {
-                        put("path", rel)
-                        put("name", name)
-                        put("type", type)
-                    }
-                }
+            }
+            results.sortBy { it.jsonObject["path"]?.jsonPrimitive?.contentOrNull ?: "" }
         } catch (e: Exception) {
             log.warn("list_files_request failed: ${e.message}")
         }
