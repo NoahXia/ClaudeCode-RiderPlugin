@@ -879,20 +879,6 @@ class ClaudeMessageRouter(
                 displayName = if (customHaiku != null) (customHaikuName ?: customHaiku) else "Haiku",
                 description = if (customHaiku != null) (customHaikuDesc ?: "Custom Haiku model") else "Haiku 4.5 · Fastest for quick answers"
             ),
-            Model(
-                value = "sonnet[1m]",
-                displayName = if (customSonnet != null) "${customSonnetName ?: customSonnet} (1M context)" else "Sonnet (1M context)",
-                description = if (customSonnet != null) (customSonnetDesc ?: "Custom Sonnet model (1M context)") else "Sonnet 4.6 for long sessions"
-            ),
-            Model(
-                value = "opus[1m]",
-                displayName = if (customOpus != null) "${customOpusName ?: customOpus} (1M context)" else "Opus 4.7 (1M context)",
-                description = if (customOpus != null) (customOpusDesc ?: "Custom Opus model (1M context)") else "Opus 4.7 for long sessions",
-                supportsEffort = true,
-                supportsAdaptiveThinking = true,
-                supportsFastMode = true,
-                supportsAutoMode = true
-            )
         )
 
         val customModelOption = env["ANTHROPIC_CUSTOM_MODEL_OPTION"]
