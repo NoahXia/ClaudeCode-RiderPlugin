@@ -1,5 +1,6 @@
 package com.anthropic.claudecode.rider.browser
 
+import com.anthropic.claudecode.rider.process.ClaudeProcessConfig
 import com.anthropic.claudecode.rider.process.ClaudeProcessManager
 import com.anthropic.claudecode.rider.settings.ClaudeSettings
 import com.anthropic.claudecode.rider.toolwindow.ClaudeIconManager
@@ -832,6 +833,18 @@ class ClaudeMessageRouter(
     }
 
     private fun buildModelsArray(): JsonArray {
+        val env = ClaudeProcessConfig.buildEnvironment()
+
+        val customSonnet = env["ANTHROPIC_DEFAULT_SONNET_MODEL"]
+        val customSonnetName = env["ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"]
+        val customSonnetDesc = env["ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION"]
+        val customOpus = env["ANTHROPIC_DEFAULT_OPUS_MODEL"]
+        val customOpusName = env["ANTHROPIC_DEFAULT_OPUS_MODEL_NAME"]
+        val customOpusDesc = env["ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION"]
+        val customHaiku = env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]
+        val customHaikuName = env["ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"]
+        val customHaikuDesc = env["ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION"]
+
         data class Model(
             val value: String,
             val displayName: String,
@@ -841,7 +854,7 @@ class ClaudeMessageRouter(
             val supportsFastMode: Boolean = false,
             val supportsAutoMode: Boolean = false
         )
-        val models = listOf(
+        val models = mutableListOf(
             Model(
                 value = "default",
                 displayName = "Default (recommended)",
@@ -849,13 +862,13 @@ class ClaudeMessageRouter(
             ),
             Model(
                 value = "sonnet",
-                displayName = "Sonnet",
-                description = "Sonnet 4.6 · Best for everyday tasks"
+                displayName = if (customSonnet != null) (customSonnetName ?: customSonnet) else "Sonnet",
+                description = if (customSonnet != null) (customSonnetDesc ?: "Custom Sonnet model") else "Sonnet 4.6 · Best for everyday tasks"
             ),
             Model(
                 value = "opus",
-                displayName = "Opus 4.7",
-                description = "Opus 4.7 · Most capable for complex work",
+                displayName = if (customOpus != null) (customOpusName ?: customOpus) else "Opus 4.7",
+                description = if (customOpus != null) (customOpusDesc ?: "Custom Opus model") else "Opus 4.7 · Most capable for complex work",
                 supportsEffort = true,
                 supportsAdaptiveThinking = true,
                 supportsFastMode = true,
@@ -863,24 +876,33 @@ class ClaudeMessageRouter(
             ),
             Model(
                 value = "haiku",
-                displayName = "Haiku",
-                description = "Haiku 4.5 · Fastest for quick answers"
+                displayName = if (customHaiku != null) (customHaikuName ?: customHaiku) else "Haiku",
+                description = if (customHaiku != null) (customHaikuDesc ?: "Custom Haiku model") else "Haiku 4.5 · Fastest for quick answers"
             ),
             Model(
                 value = "sonnet[1m]",
-                displayName = "Sonnet (1M context)",
-                description = "Sonnet 4.6 for long sessions"
+                displayName = if (customSonnet != null) "${customSonnetName ?: customSonnet} (1M context)" else "Sonnet (1M context)",
+                description = if (customSonnet != null) (customSonnetDesc ?: "Custom Sonnet model (1M context)") else "Sonnet 4.6 for long sessions"
             ),
             Model(
                 value = "opus[1m]",
-                displayName = "Opus 4.7 (1M context)",
-                description = "Opus 4.7 for long sessions",
+                displayName = if (customOpus != null) "${customOpusName ?: customOpus} (1M context)" else "Opus 4.7 (1M context)",
+                description = if (customOpus != null) (customOpusDesc ?: "Custom Opus model (1M context)") else "Opus 4.7 for long sessions",
                 supportsEffort = true,
                 supportsAdaptiveThinking = true,
                 supportsFastMode = true,
                 supportsAutoMode = true
             )
         )
+
+        val customModelOption = env["ANTHROPIC_CUSTOM_MODEL_OPTION"]
+        if (!customModelOption.isNullOrBlank() && models.none { it.value == customModelOption }) {
+            models.add(Model(
+                value = customModelOption,
+                displayName = env["ANTHROPIC_CUSTOM_MODEL_OPTION_NAME"] ?: customModelOption,
+                description = env["ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION"] ?: "Custom model ($customModelOption)"
+            ))
+        }
         return JsonArray(models.map { m ->
             buildJsonObject {
                 put("value", m.value)
