@@ -834,48 +834,62 @@ class ClaudeMessageRouter(
     private fun buildModelsArray(): JsonArray {
         data class Model(
             val value: String,
-            val label: String,
+            val displayName: String,
             val description: String,
             val supportsEffort: Boolean = false,
-            val supportsAutoMode: Boolean = false,
-            val supportsFastMode: Boolean = false
+            val supportsAdaptiveThinking: Boolean = false,
+            val supportsFastMode: Boolean = false,
+            val supportsAutoMode: Boolean = false
         )
         val models = listOf(
             Model(
                 value = "default",
-                label = "Default (recommended)",
-                description = "Use the default model (currently Sonnet 4.6) · $3/$15 per Mtok"
+                displayName = "Default (recommended)",
+                description = "Use the default model (currently Sonnet 4.6)"
             ),
             Model(
-                value = "claude-sonnet-4-6-20251001",
-                label = "Sonnet (1M context)",
-                description = "Sonnet 4.6 for long sessions · $3/$15 per Mtok"
+                value = "sonnet",
+                displayName = "Sonnet",
+                description = "Sonnet 4.6 · Best for everyday tasks"
             ),
             Model(
-                value = "claude-opus-4-7-20250514",
-                label = "Opus 4.7 (1M context)",
-                description = "Opus 4.7 with 1M context · Most capable for complex work · $5/$25 per Mtok",
-                supportsEffort = true
+                value = "opus",
+                displayName = "Opus 4.7",
+                description = "Opus 4.7 · Most capable for complex work",
+                supportsEffort = true,
+                supportsAdaptiveThinking = true,
+                supportsFastMode = true,
+                supportsAutoMode = true
             ),
             Model(
-                value = "claude-haiku-4-5-20251001",
-                label = "Haiku",
-                description = "Haiku 4.5 · Fastest for quick answers · $1/$5 per Mtok"
+                value = "haiku",
+                displayName = "Haiku",
+                description = "Haiku 4.5 · Fastest for quick answers"
             ),
             Model(
-                value = "claude-sonnet-4-6",
-                label = "Sonnet 4.6",
-                description = "claude-sonnet-4-6"
+                value = "sonnet[1m]",
+                displayName = "Sonnet (1M context)",
+                description = "Sonnet 4.6 for long sessions"
+            ),
+            Model(
+                value = "opus[1m]",
+                displayName = "Opus 4.7 (1M context)",
+                description = "Opus 4.7 for long sessions",
+                supportsEffort = true,
+                supportsAdaptiveThinking = true,
+                supportsFastMode = true,
+                supportsAutoMode = true
             )
         )
         return JsonArray(models.map { m ->
             buildJsonObject {
                 put("value", m.value)
-                put("label", m.label)
+                put("displayName", m.displayName)
                 put("description", m.description)
                 put("supportsEffort", m.supportsEffort)
-                put("supportsAutoMode", m.supportsAutoMode)
+                put("supportsAdaptiveThinking", m.supportsAdaptiveThinking)
                 put("supportsFastMode", m.supportsFastMode)
+                put("supportsAutoMode", m.supportsAutoMode)
                 if (m.supportsEffort) put("supportedEffortLevels", JsonArray(listOf(
                     JsonPrimitive("low"), JsonPrimitive("medium"), JsonPrimitive("high")
                 )))
