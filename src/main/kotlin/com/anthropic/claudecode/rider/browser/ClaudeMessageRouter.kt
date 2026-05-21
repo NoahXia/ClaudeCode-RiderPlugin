@@ -169,6 +169,9 @@ class ClaudeMessageRouter(
             "open_config"             -> handleOpenConfig(requestId)
             "open_help"               -> handleOpenHelp(requestId)
             "open_output_panel"       -> handleOpenOutputPanel(requestId)
+            "open_markdown_preview"   -> handleOpenMarkdownPreview(requestId, req)
+            "close_plan_preview"      -> handleClosePlanPreview(requestId, req)
+            "remove_plan_comment"     -> handleRemovePlanComment(requestId, req)
             else -> {
                 log.debug("Unhandled RPC request type: $reqType — sending stub response")
                 sendResponse(requestId, buildJsonObject { put("type", "${reqType}_response") })
@@ -596,10 +599,36 @@ class ClaudeMessageRouter(
         val line = req["location"]?.jsonObject?.get("line")?.jsonPrimitive?.intOrNull ?: 0
         val col  = req["location"]?.jsonObject?.get("column")?.jsonPrimitive?.intOrNull ?: 0
         ApplicationManager.getApplication().invokeLater {
-            val vFile = LocalFileSystem.getInstance().findFileByPath(filePath)
+            // Normalize Windows backslashes and use refreshAndFindFileByPath so files outside
+            // the project (e.g. ~/.claude/plans/) and newly-created files are found reliably.
+            val normalized = filePath.replace('\\', '/')
+            val vFile = LocalFileSystem.getInstance().findFileByPath(normalized)
+                ?: LocalFileSystem.getInstance().refreshAndFindFileByPath(normalized)
             if (vFile != null) OpenFileDescriptor(project, vFile, line, col).navigate(true)
         }
         sendResponse(requestId, buildJsonObject { put("type", "open_file_response") })
+    }
+
+    // ── Plan preview ──────────────────────────────────────────────────────────
+
+    private fun handleOpenMarkdownPreview(requestId: String, req: JsonObject) {
+        val channelId      = req["channelId"]?.jsonPrimitive?.contentOrNull ?: ""
+        val content        = req["content"]?.jsonPrimitive?.contentOrNull ?: ""
+        val title          = req["title"]?.jsonPrimitive?.contentOrNull ?: "Claude's Plan"
+        val enableComments = req["enableComments"]?.jsonPrimitive?.booleanOrNull ?: true
+        browserManager.planPreviewPanel.show(channelId, content, title, enableComments)
+        sendResponse(requestId, buildJsonObject { put("type", "open_markdown_preview_response") })
+    }
+
+    private fun handleClosePlanPreview(requestId: String, req: JsonObject) {
+        browserManager.planPreviewPanel.close()
+        sendResponse(requestId, buildJsonObject { put("type", "close_plan_preview_response") })
+    }
+
+    private fun handleRemovePlanComment(requestId: String, req: JsonObject) {
+        val commentId = req["commentId"]?.jsonPrimitive?.contentOrNull ?: ""
+        browserManager.planPreviewPanel.removeComment(commentId)
+        sendResponse(requestId, buildJsonObject { put("type", "remove_plan_comment_response") })
     }
 
     private fun handleOpenUrl(requestId: String, req: JsonObject) {
