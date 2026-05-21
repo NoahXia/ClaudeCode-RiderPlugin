@@ -261,6 +261,13 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             return
         }
 
+        // Skip <previous_reasoning> blocks — internal Claude chain-of-thought context
+        // injected for multi-turn continuity via --include-partial-messages, not meant for display.
+        if (line.contains("<previous_reasoning>")) {
+            log.debug("[channel/$channelId] skipping previous_reasoning block")
+            return
+        }
+
         val inner = buildJsonObject {
             put("type", "io_message")
             put("channelId", channelId)
