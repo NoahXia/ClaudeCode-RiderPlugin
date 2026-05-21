@@ -25,6 +25,9 @@ import org.cef.handler.CefDisplayHandler
 import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.awt.Color
 import java.awt.Component
 import java.awt.Desktop
@@ -46,6 +49,10 @@ class ClaudeBrowserManager(
     private val messageRouter: ClaudeMessageRouter = ClaudeMessageRouter(project, this)
 
     val component: Component get() = browser.component
+
+    val planPreviewPanel: ClaudePlanPreviewPanel = ClaudePlanPreviewPanel(project, this) { channelId, comment ->
+        sendPlanComment(channelId, comment)
+    }
 
     init {
         Disposer.register(parentDisposable, this)
@@ -390,6 +397,16 @@ window.__fromExtension({
 });
         """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url ?: "", 0)
+    }
+
+    /** Sends a plan_comment message to the React webview (IDE → React). */
+    fun sendPlanComment(channelId: String, comment: JsonObject) {
+        val msg = buildJsonObject {
+            put("type", "plan_comment")
+            put("channelId", channelId)
+            put("comment", comment)
+        }
+        sendToWebview(msg.toString())
     }
 
     override fun dispose() {
