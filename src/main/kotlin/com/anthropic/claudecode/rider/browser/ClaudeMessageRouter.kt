@@ -224,7 +224,11 @@ class ClaudeMessageRouter(
                     put("applied", buildJsonObject {})
                     put("errors", JsonArray(emptyList()))
                 })
-                put("experimentGates", buildJsonObject {})
+                put("experimentGates", buildJsonObject {
+                    // Enables the "Auto" permission mode in the webview's mode menu.
+                    // Availability is further gated by the selected model's supportsAutoMode flag.
+                    put("tengu_auto_mode_state", "enabled")
+                })
                 put("spinnerVerbsConfig", JsonNull)
                 put("currentRepo", JsonNull)
             })
@@ -922,7 +926,7 @@ class ClaudeMessageRouter(
             val supportsEffort: Boolean = false,
             val supportsAdaptiveThinking: Boolean = false,
             val supportsFastMode: Boolean = false,
-            val supportsAutoMode: Boolean = false
+            val supportsAutoMode: Boolean = true
         )
         val models = mutableListOf(
             Model(
