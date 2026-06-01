@@ -4,10 +4,12 @@ import com.anthropic.claudecode.rider.settings.ClaudeSettings
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.EnvironmentUtil
 import com.intellij.util.SystemProperties
+import kotlinx.serialization.json.*
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.TimeUnit
 
 /**
  * Resolves the Claude CLI binary path and assembles the environment variables
@@ -130,6 +132,151 @@ object ClaudeProcessConfig {
         }
 
         return env
+    }
+
+    /**
+     * Enumerates configured MCP servers by shelling out to `claude mcp list`, which is the
+     * same source of truth the interactive CLI `/mcp` uses (it health-checks approved servers).
+     *
+     * The webview's `/mcp` panel drives itself off a `get_mcp_servers` RPC to the host rather
+     * than reading the stream-JSON `system/init` message (whose `mcp_servers` status is always
+     * "pending" under MCP_CONNECTION_NONBLOCKING). So the host has to produce this list itself.
+     *
+     * Returns one JsonObject per server with the fields the panel reads: `name`, `status`
+     * (connected|failed|needs-auth|pending|disabled), `scope` (for grouping) and a truthy
+     * `config` object (servers without `config` are filtered out by the webview).
+     *
+     * Runs a subprocess with a health-check timeout — call this OFF the EDT.
+     */
+    fun listMcpServers(cwd: String): List<JsonObject> {
+        val binary = resolveBinaryPath() ?: run {
+            log.warn("listMcpServers: claude binary not found")
+            return emptyList()
+        }
+
+        val cmd = mutableListOf<String>()
+        if (binary.endsWith(".cmd", ignoreCase = true) || binary.endsWith(".bat", ignoreCase = true)) {
+            cmd += listOf("cmd.exe", "/c", binary)
+        } else {
+            cmd += binary
+        }
+        cmd += listOf("mcp", "list")
+
+        val output = try {
+            val pb = ProcessBuilder(cmd)
+                .directory(File(cwd.takeIf { File(it).exists() } ?: SystemProperties.getUserHome()))
+                .redirectErrorStream(true)
+            pb.environment().putAll(buildEnvironment())
+            val proc = pb.start()
+            val text = proc.inputStream.bufferedReader(Charsets.UTF_8).readText()
+            if (!proc.waitFor(45, TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
+                log.warn("listMcpServers: `claude mcp list` timed out")
+            }
+            text
+        } catch (e: Exception) {
+            log.warn("listMcpServers: failed to run `claude mcp list`: ${e.message}")
+            return emptyList()
+        }
+
+        val scopes = readConfiguredScopes(cwd)
+        val servers = parseMcpListOutput(output, scopes)
+        log.info("listMcpServers: parsed ${servers.size} server(s) from `claude mcp list`")
+        return servers
+    }
+
+    /**
+     * Parses the human-readable `claude mcp list` output. Each server line looks like:
+     *   `name: https://host/mcp (HTTP) - ✓ Connected`
+     *   `claude.ai Gmail: https://.../mcp/v1 - ! Needs authentication`
+     *   `name: /path/to/cmd arg - ✓ Connected`   (stdio, no `(TYPE)` parenthetical)
+     * The leading "Checking MCP server health…" header and blank lines are ignored.
+     */
+    private fun parseMcpListOutput(output: String, scopes: Map<String, String>): List<JsonObject> {
+        val result = mutableListOf<JsonObject>()
+        for (raw in output.lineSequence()) {
+            val line = raw.trim()
+            if (line.isEmpty()) continue
+            val colon = line.indexOf(": ")
+            val dash = line.lastIndexOf(" - ")
+            // Both separators are required for a server entry; skips headers/notices.
+            if (colon <= 0 || dash <= colon) continue
+
+            val name = line.substring(0, colon).trim()
+            var target = line.substring(colon + 2, dash).trim()
+            val statusText = line.substring(dash + 3).trim()
+
+            // Pull a trailing "(HTTP)" / "(SSE)" type hint off the target if present.
+            var type: String? = null
+            val typeMatch = Regex("""\(([^)]+)\)$""").find(target)
+            if (typeMatch != null) {
+                type = typeMatch.groupValues[1].trim().lowercase()
+                target = target.substring(0, typeMatch.range.first).trim()
+            }
+            val resolvedType = type ?: if (target.startsWith("http")) "http" else "stdio"
+
+            val status = when {
+                statusText.contains("Connected", ignoreCase = true) -> "connected"
+                statusText.contains("auth", ignoreCase = true)      -> "needs-auth"
+                statusText.contains("Failed", ignoreCase = true)    -> "failed"
+                statusText.contains("Pending", ignoreCase = true)   -> "pending"
+                statusText.contains("Disabled", ignoreCase = true)  -> "disabled"
+                else                                                  -> "pending"
+            }
+
+            val scope = when {
+                scopes.containsKey(name)        -> scopes.getValue(name)
+                name.startsWith("claude.ai")    -> "claudeai"
+                else                            -> "user"
+            }
+
+            result += buildJsonObject {
+                put("name", name)
+                put("status", status)
+                put("scope", scope)
+                put("config", buildJsonObject {
+                    put("type", resolvedType)
+                    if (resolvedType == "stdio") put("command", target) else put("url", target)
+                })
+                if (status == "failed" || status == "needs-auth") put("error", statusText)
+            }
+        }
+        return result
+    }
+
+    /**
+     * Builds a server-name → scope map from the on-disk config so the panel can group servers.
+     * Top-level `~/.claude.json` `mcpServers` → "user"; that file's `projects[cwd].mcpServers`
+     * → "local"; a project `.mcp.json` → "project".
+     */
+    private fun readConfiguredScopes(cwd: String): Map<String, String> {
+        val scopes = mutableMapOf<String, String>()
+
+        fun keysOf(obj: JsonObject?): Set<String> =
+            (obj?.get("mcpServers") as? JsonObject)?.keys ?: emptySet()
+
+        runCatching {
+            val claudeJson = File(SystemProperties.getUserHome(), ".claude.json")
+            if (claudeJson.exists()) {
+                val root = Json.parseToJsonElement(claudeJson.readText()).jsonObject
+                keysOf(root).forEach { scopes[it] = "user" }
+                val projects = root["projects"] as? JsonObject
+                val projectEntry = projects?.entries?.firstOrNull { (k, _) ->
+                    k.replace('\\', '/').equals(cwd.replace('\\', '/'), ignoreCase = true)
+                }?.value as? JsonObject
+                keysOf(projectEntry).forEach { scopes[it] = "local" }
+            }
+        }
+
+        runCatching {
+            val mcpJson = File(cwd, ".mcp.json")
+            if (mcpJson.exists()) {
+                val root = Json.parseToJsonElement(mcpJson.readText()).jsonObject
+                keysOf(root).forEach { scopes[it] = "project" }
+            }
+        }
+
+        return scopes
     }
 
     /**

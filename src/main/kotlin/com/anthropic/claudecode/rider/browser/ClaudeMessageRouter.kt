@@ -156,10 +156,7 @@ class ClaudeMessageRouter(
                 put("type", "list_marketplaces_response")
                 put("marketplaces", JsonArray(emptyList()))
             })
-            "get_mcp_servers"         -> sendResponse(requestId, buildJsonObject {
-                put("type", "get_mcp_servers_response")
-                put("mcpServers", JsonArray(emptyList()))
-            })
+            "get_mcp_servers"         -> handleGetMcpServers(requestId)
             "get_context_usage"       -> sendResponse(requestId, buildJsonObject { put("type", "get_context_usage_response") })
             "check_git_status"        -> handleCheckGitStatus(requestId, req)
             "list_files_request"      -> handleListFiles(requestId, req)
@@ -250,6 +247,31 @@ class ClaudeMessageRouter(
                 put("subscriptionType", JsonNull)
             })
         })
+    }
+
+    // ── MCP servers ───────────────────────────────────────────────────────────
+
+    /**
+     * The webview's `/mcp` panel asks the host for the server list via this RPC (it does NOT
+     * read the stream-JSON init message). `claude mcp list` health-checks the servers, which is
+     * slow, so we run it off the EDT and reply when it returns.
+     */
+    private fun handleGetMcpServers(requestId: String) {
+        val cwd = project.basePath ?: System.getProperty("user.home", "")
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val servers = try {
+                ClaudeProcessConfig.listMcpServers(cwd)
+            } catch (e: Exception) {
+                log.warn("get_mcp_servers failed: ${e.message}")
+                emptyList()
+            }
+            ApplicationManager.getApplication().invokeLater {
+                sendResponse(requestId, buildJsonObject {
+                    put("type", "get_mcp_servers_response")
+                    put("mcpServers", JsonArray(servers))
+                })
+            }
+        }
     }
 
     // ── sessions ─────────────────────────────────────────────────────────────
