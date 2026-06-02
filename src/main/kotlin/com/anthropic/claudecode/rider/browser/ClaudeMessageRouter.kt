@@ -43,7 +43,6 @@ class ClaudeMessageRouter(
 ) : CefMessageRouterHandlerAdapter() {
 
     private val log = Logger.getInstance(ClaudeMessageRouter::class.java)
-    private val deletedSessionIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     @Volatile private var listFilesDebounce: java.util.concurrent.ScheduledFuture<*>? = null
 
@@ -156,7 +155,7 @@ class ClaudeMessageRouter(
                 put("type", "list_marketplaces_response")
                 put("marketplaces", JsonArray(emptyList()))
             })
-            "get_mcp_servers"         -> handleGetMcpServers(requestId)
+            "get_mcp_servers"         -> handleGetMcpServers(requestId, channelId)
             "get_context_usage"       -> sendResponse(requestId, buildJsonObject { put("type", "get_context_usage_response") })
             "check_git_status"        -> handleCheckGitStatus(requestId, req)
             "list_files_request"      -> handleListFiles(requestId, req)
@@ -252,11 +251,42 @@ class ClaudeMessageRouter(
     // ── MCP servers ───────────────────────────────────────────────────────────
 
     /**
-     * The webview's `/mcp` panel asks the host for the server list via this RPC (it does NOT
-     * read the stream-JSON init message). `claude mcp list` health-checks the servers, which is
-     * slow, so we run it off the EDT and reply when it returns.
+     * The webview's `/mcp` panel asks the host for the server list (with per-server tools) via
+     * this RPC. Mirrors the official VS Code extension, whose `mcpServerStatus()` issues a
+     * `control_request {subtype:"mcp_status"}` against the **live conversation** and returns the
+     * `mcpServers` array — each entry carrying live `status` plus the connected server's `tools`.
+     *
+     * Querying the live channel (rather than a detached `claude mcp list`) is what makes a new
+     * conversation re-fetch its own tool list: each channel reports its own MCP connection state,
+     * and the per-server `tools` only `claude mcp list` cannot provide appear once connected.
+     *
+     * Falls back to `claude mcp list` when there is no live channel yet (e.g. the panel is opened
+     * before any conversation has been launched).
      */
-    private fun handleGetMcpServers(requestId: String) {
+    private fun handleGetMcpServers(requestId: String, channelId: String) {
+        val processManager = ClaudeProcessManager.getInstance(project)
+        if (channelId.isNotBlank() && processManager.hasChannel(channelId)) {
+            processManager.sendControlRequestAwait(channelId, "mcp_status") { inner ->
+                val servers = inner?.get("mcpServers")?.let { it as? JsonArray }
+                if (servers != null) {
+                    ApplicationManager.getApplication().invokeLater {
+                        sendResponse(requestId, buildJsonObject {
+                            put("type", "get_mcp_servers_response")
+                            put("mcpServers", servers)
+                        })
+                    }
+                } else {
+                    // mcp_status failed/timed out — fall back to the detached listing.
+                    respondWithMcpListFallback(requestId)
+                }
+            }
+            return
+        }
+        respondWithMcpListFallback(requestId)
+    }
+
+    /** `claude mcp list` health-checks the servers (slow), so run it off the EDT. */
+    private fun respondWithMcpListFallback(requestId: String) {
         val cwd = project.basePath ?: System.getProperty("user.home", "")
         ApplicationManager.getApplication().executeOnPooledThread {
             val servers = try {
@@ -306,8 +336,9 @@ class ClaudeMessageRouter(
             if (projectDir == null) return emptyList()
 
             Files.list(projectDir).use { stream ->
+                val settings = ClaudeSettings.getInstance()
                 stream.filter { it.toString().endsWith(".jsonl") }
-                      .filter { !deletedSessionIds.contains(it.fileName.toString().removeSuffix(".jsonl")) }
+                      .filter { !settings.isSessionHidden(it.fileName.toString().removeSuffix(".jsonl")) }
                       .sorted { a, b ->
                           Files.getLastModifiedTime(b).compareTo(Files.getLastModifiedTime(a))
                       }
@@ -448,23 +479,13 @@ class ClaudeMessageRouter(
             sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
             return
         }
-        // Record as deleted immediately so subsequent list_sessions calls exclude it,
-        // regardless of whether the file is found on disk.
-        deletedSessionIds.add(sessionId)
-        try {
-            val claudeDir = Paths.get(System.getProperty("user.home"), ".claude", "projects")
-            val file = Files.walk(claudeDir, 2).use { stream ->
-                stream.filter { it.fileName.toString() == "$sessionId.jsonl" }.findFirst().orElse(null)
-            }
-            if (file != null) {
-                Files.delete(file)
-                log.info("Deleted session $sessionId")
-            } else {
-                log.warn("Delete session $sessionId: file not found on disk (still suppressed from list)")
-            }
-        } catch (e: Exception) {
-            log.warn("Failed to delete session $sessionId", e)
-        }
+        // Match the official VS Code extension: "delete" is a persistent hide, not a file
+        // removal. The official host does `settings.hideSession(id)` (appends to a persisted
+        // hiddenSessionIds list) and never touches the .jsonl. Hiding instead of deleting
+        // keeps it durable across restarts and avoids the race where a resumed
+        // `claude --resume` subprocess recreates a just-deleted session file.
+        ClaudeSettings.getInstance().hideSession(sessionId)
+        log.info("Hid session $sessionId from history")
         sendResponse(requestId, buildJsonObject { put("type", "delete_session_response") })
     }
 

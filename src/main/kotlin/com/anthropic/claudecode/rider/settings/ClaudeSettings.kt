@@ -28,7 +28,15 @@ class ClaudeSettings : PersistentStateComponent<ClaudeSettings.State> {
         var autosave: Boolean = true,
         var model: String = "default",
         var thinkingLevel: String = "none",
-        var environmentVariables: MutableList<EnvVar> = mutableListOf()
+        var environmentVariables: MutableList<EnvVar> = mutableListOf(),
+        // Session IDs the user has "deleted" from the history list. Mirrors the official
+        // VS Code extension, whose delete button is really a hide: it appends the id to a
+        // persisted `hiddenSessionIds` list (VS Code globalState) and never touches the
+        // .jsonl on disk. Persisting (vs. an in-memory set) keeps the session hidden across
+        // IDE restarts; not deleting the file avoids the race where a resumed
+        // `claude --resume` subprocess recreates a just-deleted session. Session IDs are
+        // UUIDs, globally unique, so a flat list needs no per-project keying.
+        var hiddenSessionIds: MutableList<String> = mutableListOf()
     )
 
     private var state = State()
@@ -61,6 +69,19 @@ class ClaudeSettings : PersistentStateComponent<ClaudeSettings.State> {
     var environmentVariables: MutableList<EnvVar>
         get() = state.environmentVariables
         set(value) { state.environmentVariables = value }
+
+    /** True if the user has hidden ("deleted") this session from the history list. */
+    @Synchronized
+    fun isSessionHidden(sessionId: String): Boolean =
+        state.hiddenSessionIds.contains(sessionId)
+
+    /** Hides a session from the history list, persisted so it stays hidden across restarts. */
+    @Synchronized
+    fun hideSession(sessionId: String) {
+        if (!state.hiddenSessionIds.contains(sessionId)) {
+            state.hiddenSessionIds.add(sessionId)
+        }
+    }
 
     override fun getState(): State = state
 

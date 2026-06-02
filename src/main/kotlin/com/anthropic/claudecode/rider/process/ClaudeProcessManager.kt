@@ -48,7 +48,17 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
      */
     private val pendingPermissions = ConcurrentHashMap<String, Pair<String, String>>()
 
+    /**
+     * In-flight control_requests we sent and are awaiting a control_response for.
+     * Key = request_id we generated; Value = callback invoked once with the inner `response`
+     * payload (or null on timeout). Used by [sendControlRequestAwait] (e.g. mcp_status).
+     */
+    private val pendingControlResponses = ConcurrentHashMap<String, (JsonObject?) -> Unit>()
+
     // ── Public API ────────────────────────────────────────────────────────────
+
+    /** True if a live process exists for [channelId]. */
+    fun hasChannel(channelId: String): Boolean = channels.containsKey(channelId)
 
     /**
      * Spawns a new Claude process for [channelId].
@@ -237,6 +247,60 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * Sends a control_request to [channelId] and invokes [onResponse] exactly once with the
+     * inner `response` payload of the matching control_response (or null if the channel is gone,
+     * the write fails, or no reply arrives within [timeoutMs]). Mirrors the SDK's
+     * QueryClient.request() round-trip — used for `mcp_status` (the MCP server/tool list).
+     *
+     * [onResponse] runs on an IO thread; marshal to the EDT before touching UI/webview.
+     */
+    fun sendControlRequestAwait(
+        channelId: String,
+        subtype: String,
+        extra: JsonObject = JsonObject(emptyMap()),
+        timeoutMs: Long = 10_000,
+        onResponse: (JsonObject?) -> Unit
+    ) {
+        val fired = java.util.concurrent.atomic.AtomicBoolean(false)
+        val callback: (JsonObject?) -> Unit = { resp -> if (fired.compareAndSet(false, true)) onResponse(resp) }
+
+        val channel = channels[channelId]
+        if (channel == null) {
+            log.warn("sendControlRequestAwait: channel $channelId not found")
+            callback(null)
+            return
+        }
+        val requestId = java.util.UUID.randomUUID().toString()
+        pendingControlResponses[requestId] = callback
+        try {
+            val msg = buildJsonObject {
+                put("type", "control_request")
+                put("request_id", requestId)
+                put("request", buildJsonObject {
+                    put("subtype", subtype)
+                    extra.forEach { (k, v) -> put(k, v) }
+                })
+            }
+            channel.process.outputStream.write((msg.toString() + "\n").toByteArray(Charsets.UTF_8))
+            channel.process.outputStream.flush()
+            log.info("sendControlRequestAwait: channel=$channelId subtype=$subtype request_id=$requestId")
+        } catch (e: Exception) {
+            log.warn("Failed to send control_request ($subtype) to channel $channelId: ${e.message}")
+            pendingControlResponses.remove(requestId)
+            callback(null)
+            return
+        }
+        scope.launch {
+            delay(timeoutMs)
+            val pending = pendingControlResponses.remove(requestId)
+            if (pending != null) {
+                log.warn("control_request $subtype ($requestId) timed out after ${timeoutMs}ms")
+                pending(null)
+            }
+        }
+    }
+
     // ── Webview forwarding ────────────────────────────────────────────────────
 
     private fun forwardIoMessage(channelId: String, line: String) {
@@ -259,6 +323,19 @@ class ClaudeProcessManager(private val project: Project) : Disposable {
             log.info("[channel/$channelId] control_request subtype=$subtype tool=$toolName")
             bridgeControlRequest(channelId, parsedMessage)
             return
+        }
+
+        // control_response to a request WE sent (e.g. mcp_status): resolve the waiting callback
+        // and consume it. Shape: { response: { request_id, response: {...} } }. Responses we
+        // didn't originate (request_id unknown) fall through and are forwarded to the webview.
+        if (msgType == "control_response") {
+            val responseObj = parsedMessage["response"]?.jsonObject
+            val reqId = responseObj?.get("request_id")?.jsonPrimitive?.contentOrNull
+            val pending = reqId?.let { pendingControlResponses.remove(it) }
+            if (pending != null) {
+                pending(responseObj["response"]?.jsonObject)
+                return
+            }
         }
 
         // Skip <previous_reasoning> blocks — internal Claude chain-of-thought context
