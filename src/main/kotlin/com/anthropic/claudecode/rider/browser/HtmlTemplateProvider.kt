@@ -378,7 +378,7 @@ object HtmlTemplateProvider {
     (function () {
         var HIDDEN_ITEMS = ['Switch account', '/remote-control'];
         var HIDDEN_ITEM_PREFIXES = ['General config'];
-        var HIDDEN_SECTIONS = ['Settings', 'Slash Commands'];
+        var HIDDEN_SECTIONS = ['Settings'];
 
         function applyHides() {
             // Hide the "Web" tab in the session list — remote sessions are not supported.

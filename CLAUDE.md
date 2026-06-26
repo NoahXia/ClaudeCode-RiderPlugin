@@ -39,22 +39,27 @@ React Webview (JCEF)
 
 | Component | Location | Responsibility |
 |-----------|----------|---------------|
+| `ClaudeToolWindowFactory` | `toolwindow/` | Creates tool window; registered in plugin.xml |
 | `ClaudeToolWindowPanel` | `toolwindow/` | Swing panel hosting the JCEF browser |
+| `ClaudeIconManager` | `toolwindow/` | Animates tool-window icon (idle / pending / done) |
 | `ClaudeBrowserManager` | `browser/` | JCEF lifecycle, theme/font injection, editor context sync |
 | `ClaudeMessageRouter` | `browser/` | JS→Kotlin IPC dispatcher (CefMessageRouter) |
 | `HtmlTemplateProvider` | `browser/` | Generates HTML shell + `acquireVsCodeApi()` shim |
 | `WebviewAssetProvider` | `browser/` | Extracts bundled `index.js`/`index.css` to temp dir |
+| `ClaudePlanPreviewPanel` | `browser/` | Native Swing panel for reviewing plan-mode proposals |
 | `ClaudeProcessManager` | `process/` | Spawns `claude` subprocess, routes stream-JSON messages |
 | `ClaudeProcessConfig` | `process/` | Binary path resolution (handles `.cmd`/`.bat` on Windows) |
 | `MessageProtocol` | `process/` | `@Serializable` data classes for all message types |
 | `ClaudeSettings` | `settings/` | App-level persistent settings (`claude-code.xml`) |
+| `ClaudeSettingsConfigurable` | `settings/` | Settings UI under **Tools → Claude Code** |
+| `ClaudeStartupActivity` | root | Post-startup check: warns if Git Bash is absent on Windows |
+| `ClaudeEditorActionGroup` | `actions/` | Right-click menu: Ask / Explain / Fix / Send File |
 
 ### Tool Permission Bridging
 
-Claude CLI sends `control_request {subtype:"can_use_tool"}` on stdin. The plugin:
-1. Auto-approves non-interactive tools (Read, Write, Edit, Glob, etc.) in Kotlin
-2. Translates interactive tools (Bash) to a `tool_permission_request` RPC call to the webview
-3. Webview shows the permission dialog → user allows/denies → response goes back to Claude stdin as `control_response`
+The `claude` subprocess is launched with `--allowedTools` to pre-approve non-interactive tools (Read, Write, Edit, Glob, etc.) at the CLI level. For tools not on that list (Bash), the CLI sends `control_request {subtype:"can_use_tool"}` on stdin and the plugin:
+1. Translates the request to a `tool_permission_request` RPC call to the webview
+2. Webview shows the permission dialog → user allows/denies → response goes back to Claude stdin as `control_response`
 
 ### IDE Context Sync
 
@@ -76,7 +81,8 @@ Claude CLI sends `control_request {subtype:"can_use_tool"}` on stdin. The plugin
 ## Key Design Notes
 
 - **Windows `.cmd` shim**: `ClaudeProcessConfig` detects npm-installed Claude CLI by checking for a `.cmd` wrapper and wrapping the command in `cmd /c` accordingly.
+- **Windows Git Bash requirement**: `ClaudeStartupActivity` warns at startup if Git Bash (`git-bash.exe`) is not found; Bash tool execution inside the plugin requires it.
 - **Theme injection**: IDE colors are read via `EditorColorsManager` and injected as CSS variables on every theme change event.
 - **External links**: Clicks on `http://https://` URLs open the system browser via `Desktop.browse()` to avoid spawning CEF processes for external navigation.
 - **Sessions**: Claude CLI stores sessions under `~/.claude/projects/`; the plugin does not manage session storage itself.
-- **Stream-JSON protocol**: Both stdin and stdout of the `claude` subprocess use one JSON object per line, matching the Claude SDK stdio protocol.
+- **Stream-JSON protocol**: Both stdin and stdout of the `claude` subprocess use one JSON object per line, matching the Claude SDK stdio protocol. The subprocess is launched with `--include-partial-messages` to enable streaming tool-call blocks.

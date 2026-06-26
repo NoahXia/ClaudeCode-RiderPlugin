@@ -45,6 +45,7 @@ class ClaudeMessageRouter(
     private val log = Logger.getInstance(ClaudeMessageRouter::class.java)
 
     @Volatile private var listFilesDebounce: java.util.concurrent.ScheduledFuture<*>? = null
+    @Volatile private var cachedProbeConfig: JsonObject? = null
 
     override fun onQuery(
         browser: CefBrowser?,
@@ -98,21 +99,7 @@ class ClaudeMessageRouter(
 
         when (reqType) {
             "init"                    -> handleInit(requestId)
-            "get_claude_state"        -> sendResponse(requestId, buildJsonObject {
-                    put("type", "get_claude_state_response")
-                    put("config", buildJsonObject {
-                        put("claudeSettings", buildJsonObject {
-                            put("effective", buildJsonObject {
-                                put("permissions", buildJsonObject {})
-                                put("model", JsonNull)
-                            })
-                            put("applied", buildJsonObject {})
-                            put("errors", JsonArray(emptyList()))
-                        })
-                        put("settings", buildJsonObject {})
-                        put("models", buildModelsArray())
-                    })
-                })
+            "get_claude_state"        -> handleGetClaudeState(requestId)
             "get_auth_status"         -> handleGetAuthStatus(requestId)
             "login"                   -> sendResponse(requestId, buildJsonObject {
                 put("type", "login_response")
@@ -233,6 +220,49 @@ class ClaudeMessageRouter(
 
         // Push the current file context now that the React app is mounted and listening.
         browserManager.sendCurrentFileContext()
+    }
+
+    // ── claude state (config probe) ───────────────────────────────────────────
+
+    private fun handleGetClaudeState(requestId: String) {
+        val cached = cachedProbeConfig
+        if (cached != null) {
+            sendClaudeStateResponse(requestId, cached)
+            return
+        }
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val config = try {
+                val cwd = project.basePath ?: System.getProperty("user.home", "")
+                ClaudeProcessConfig.probeConfig(cwd)
+            } catch (e: Exception) {
+                log.warn("Config probe failed: ${e.message}")
+                null
+            }
+            cachedProbeConfig = config
+            ApplicationManager.getApplication().invokeLater {
+                sendClaudeStateResponse(requestId, config)
+            }
+        }
+    }
+
+    private fun sendClaudeStateResponse(requestId: String, probeConfig: JsonObject?) {
+        val commands = probeConfig?.get("commands")?.let { it as? JsonArray } ?: JsonArray(emptyList())
+        sendResponse(requestId, buildJsonObject {
+            put("type", "get_claude_state_response")
+            put("config", buildJsonObject {
+                put("claudeSettings", buildJsonObject {
+                    put("effective", buildJsonObject {
+                        put("permissions", buildJsonObject {})
+                        put("model", JsonNull)
+                    })
+                    put("applied", buildJsonObject {})
+                    put("errors", JsonArray(emptyList()))
+                })
+                put("settings", buildJsonObject {})
+                put("models", buildModelsArray())
+                put("commands", commands)
+            })
+        })
     }
 
     // ── auth status ─────────────────────────────────────────────────────────

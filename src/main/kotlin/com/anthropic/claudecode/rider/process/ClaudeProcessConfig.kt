@@ -9,6 +9,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
@@ -277,6 +278,80 @@ object ClaudeProcessConfig {
         }
 
         return scopes
+    }
+
+    /**
+     * Spawns a short-lived Claude CLI process and sends an `initialize` control_request
+     * to retrieve the config (slash commands, models, agents) — mirroring the VS Code
+     * extension's `spawnConfigProbe()`. Call OFF the EDT.
+     */
+    fun probeConfig(cwd: String): JsonObject? {
+        val binary = resolveBinaryPath() ?: return null
+
+        val args = mutableListOf<String>()
+        if (binary.endsWith(".cmd", ignoreCase = true) || binary.endsWith(".bat", ignoreCase = true)) {
+            args += listOf("cmd.exe", "/c", binary)
+        } else {
+            args += binary
+        }
+        args += listOf(
+            "--output-format", "stream-json",
+            "--input-format", "stream-json",
+            "--permission-prompt-tool", "stdio",
+            "--verbose"
+        )
+
+        val pb = ProcessBuilder(args)
+            .directory(File(cwd.takeIf { File(it).exists() } ?: SystemProperties.getUserHome()))
+            .redirectErrorStream(false)
+        pb.environment().putAll(buildEnvironment())
+
+        val proc = try { pb.start() } catch (e: Exception) {
+            log.warn("probeConfig: failed to start claude: ${e.message}")
+            return null
+        }
+
+        val requestId = java.util.UUID.randomUUID().toString()
+        val result = CompletableFuture<JsonObject?>()
+
+        val reader = Thread {
+            try {
+                val initMsg = buildJsonObject {
+                    put("type", "control_request")
+                    put("request_id", requestId)
+                    put("request", buildJsonObject { put("subtype", "initialize") })
+                }.toString() + "\n"
+                proc.outputStream.write(initMsg.toByteArray(Charsets.UTF_8))
+                proc.outputStream.flush()
+
+                proc.inputStream.bufferedReader(Charsets.UTF_8).forEachLine { line ->
+                    if (line.isBlank() || result.isDone) return@forEachLine
+                    val json = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull()
+                        ?: return@forEachLine
+
+                    if (json["type"]?.jsonPrimitive?.contentOrNull == "control_response") {
+                        val resp = json["response"]?.jsonObject ?: return@forEachLine
+                        if (resp["request_id"]?.jsonPrimitive?.contentOrNull == requestId) {
+                            result.complete(resp["response"]?.jsonObject)
+                        }
+                    }
+                }
+                if (!result.isDone) result.complete(null)
+            } catch (_: Exception) {
+                if (!result.isDone) result.complete(null)
+            }
+        }
+        reader.isDaemon = true
+        reader.start()
+
+        return try {
+            result.get(15, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            log.warn("probeConfig: timed out or failed")
+            null
+        } finally {
+            proc.destroyForcibly()
+        }
     }
 
     /**
